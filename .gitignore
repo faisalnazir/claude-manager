@@ -16,6 +16,7 @@ package-lock.json
 *.cjs
 *.md
 !README.md
+!install.sh
 launch.sh
 shell-function.sh
 zai-settings.json
