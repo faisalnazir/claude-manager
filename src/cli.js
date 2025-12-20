@@ -527,6 +527,7 @@ if (cmd === 'skills') {
       { label: 'Amazon Bedrock', value: 'bedrock', url: '' },
       { label: 'Z.AI', value: 'zai', url: 'https://api.z.ai/api/anthropic' },
       { label: 'MiniMax', value: 'minimax', url: 'https://api.minimax.io/anthropic' },
+      { label: 'OpenRouter', value: 'openrouter', url: 'https://openrouter.ai/api/v1' },
       { label: 'Custom', value: 'custom', url: '' },
     ];
 
