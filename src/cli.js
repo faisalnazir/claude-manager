@@ -702,10 +702,8 @@ if (cmd === 'skills') {
     if (profiles.length === 0) {
       return (
         <Box flexDirection="column" padding={1}>
-          <Box flexDirection="column" alignItems="center" marginBottom={1}>
-            <Text bold color="cyan">CLAUDE MANAGER</Text>
-            <Text dimColor>─────────────────────────</Text>
-          </Box>
+          <Text bold color="cyan">CLAUDE MANAGER</Text>
+          <Text dimColor>─────────────────────────</Text>
           <Text color="yellow" marginTop={1}>No profiles found!</Text>
           <Text>Run: cm new</Text>
         </Box>
@@ -721,10 +719,8 @@ if (cmd === 'skills') {
 
     return (
       <Box flexDirection="column" padding={1}>
-        <Box flexDirection="column" alignItems="center" marginBottom={1}>
-          <Text bold color="cyan">CLAUDE MANAGER</Text>
-          <Text dimColor>─────────────────────────</Text>
-        </Box>
+        <Text bold color="cyan">CLAUDE MANAGER</Text>
+        <Text dimColor>─────────────────────────</Text>
         {updateInfo?.current && <Text dimColor>Claude v{updateInfo.current}</Text>}
         {updateInfo?.needsUpdate && (
           <Text color="yellow">⚠ Update available! Press 'u' to upgrade</Text>
