@@ -1,34 +1,52 @@
-# Claude Manager (cm) v1.4.0
+# Claude Manager (cm)
 
-A terminal app for managing Claude Code settings, profiles, MCP servers, and skills.
+A powerful terminal app for managing Claude Code settings, profiles, MCP servers, and skills. Switch between different AI providers, models, and configurations with a single command.
+
+![Version](https://img.shields.io/badge/version-1.4.0-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
+
+## Features
+
+- 🔄 **Profile Management** - Create, edit, and switch between multiple Claude configurations
+- 🚀 **Quick Launch** - Select profile and launch Claude in one command
+- 🔌 **MCP Server Registry** - Search and add MCP servers from the official registry
+- 🎯 **Skills Browser** - Browse and install skills from 3 repositories
+- 📁 **Per-Project Profiles** - Auto-select profiles based on project directory
+- 🔢 **Quick Select** - Press 1-9 to instantly select profiles
+- 🔍 **Fuzzy Search** - Type to filter profiles
+- 📦 **Profile Groups** - Organize profiles by category
+- 🔄 **Auto-Update Check** - Get notified when Claude updates are available
 
 ## Installation
 
 ```bash
-# Already installed at /usr/local/bin/cm
-cm -v
+curl -fsSL https://raw.githubusercontent.com/faisalnazir/claude-manager/main/install.sh | bash
 ```
+
+### Requirements
+- [Bun](https://bun.sh) (auto-installed if missing)
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
 ## Quick Start
 
 ```bash
-cm              # Select profile and launch Claude
-cm --last       # Use last profile instantly
-cm --skip-update # Skip update check
+cm              # Select profile interactively and launch Claude
+cm -l           # Use last profile instantly
+cm --yolo       # Launch with --dangerously-skip-permissions
 ```
 
 ## Commands
 
 ### Profile Management
 
-```bash
-cm                  # Interactive profile selection (1-9 quick select, type to filter)
-cm list             # List all profiles
-cm new              # Create new profile wizard
-cm edit <name|num>  # Edit profile in $EDITOR
-cm delete <name|num># Delete profile
-cm status           # Show current settings
-```
+| Command | Description |
+|---------|-------------|
+| `cm` | Interactive profile selection (1-9 quick select, type to filter) |
+| `cm list` | List all profiles |
+| `cm new` | Create new profile wizard |
+| `cm edit <name\|num>` | Edit profile in $EDITOR |
+| `cm delete <name\|num>` | Delete profile |
+| `cm status` | Show current settings, MCP servers, and skills |
 
 ### MCP Servers
 
@@ -38,15 +56,28 @@ cm mcp github       # Search for "github" servers
 cm mcp web          # Search for "web" servers
 ```
 
-Select a server → Choose profile → Server added to profile's `mcpServers`.
+Select a server → Choose profile → Server config added to profile.
 
 ### Skills
 
 ```bash
-cm skills           # Browse skills from 3 repositories
+cm skills           # Browse and install skills
 ```
 
-Skills are added to `~/.claude.json` globally.
+Skills are downloaded from 3 repositories:
+- [anthropics/skills](https://github.com/anthropics/skills) (official)
+- [Prat011/awesome-llm-skills](https://github.com/Prat011/awesome-llm-skills)
+- [skillcreatorai/Ai-Agent-Skills](https://github.com/skillcreatorai/Ai-Agent-Skills)
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `--last`, `-l` | Use last profile without menu |
+| `--skip-update` | Skip Claude update check |
+| `--yolo` | Run Claude with `--dangerously-skip-permissions` |
+| `-v`, `--version` | Show version |
+| `-h`, `--help` | Show help |
 
 ## Profiles
 
@@ -59,7 +90,6 @@ Profiles are stored in `~/.claude/profiles/*.json`
   "name": "Z.AI (GLM)",
   "group": "providers",
   "env": {
-    "ANTHROPIC_MODEL": "Z.ai/GLM 4.6v",
     "ANTHROPIC_AUTH_TOKEN": "your-api-key",
     "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
     "API_TIMEOUT_MS": "3000000"
@@ -93,7 +123,19 @@ Profiles are stored in `~/.claude/profiles/*.json`
 | `enabledPlugins` | Plugins to enable |
 | `alwaysThinkingEnabled` | Enable extended thinking |
 | `defaultMode` | Permission mode |
-| `mcpServers` | MCP server configurations |
+| `mcpServers` | MCP server configurations (per-profile) |
+
+## Supported Providers
+
+Pre-configured in `cm new`:
+
+| Provider | Base URL |
+|----------|----------|
+| Anthropic (Direct) | Default |
+| Amazon Bedrock | Default |
+| Z.AI | `https://api.z.ai/api/anthropic` |
+| MiniMax | `https://api.minimax.io/anthropic` |
+| Custom | Your URL |
 
 ## Per-Project Profiles
 
@@ -105,47 +147,43 @@ echo "Z.AI (GLM)" > /path/to/project/.claude-profile
 
 When you run `cm` from that directory, it auto-selects that profile.
 
-## Features
-
-- **Auto-update check**: Prompts when Claude update available via Homebrew
-- **Number shortcuts**: Press 1-9 to quick-select profiles
-- **Fuzzy search**: Type to filter profiles
-- **Profile groups**: Organize profiles with `"group": "name"`
-- **MCP management**: Per-profile MCP server configs
-- **Skills**: Add skills from multiple repositories
-
 ## File Locations
 
 | File | Purpose |
 |------|---------|
 | `~/.claude/profiles/*.json` | Profile configurations |
 | `~/.claude/settings.json` | Active Claude settings |
-| `~/.claude.json` | MCP servers & skills |
+| `~/.claude/skills/` | Installed skills |
+| `~/.claude.json` | Global MCP servers |
 | `~/.claude/.last-profile` | Last used profile |
-| `.claude-profile` | Per-project profile |
-
-## Providers
-
-Pre-configured providers in `cm new`:
-
-- Anthropic (Direct)
-- Amazon Bedrock  
-- Z.AI
-- MiniMax
-- Custom
+| `.claude-profile` | Per-project profile selector |
 
 ## Tips
 
 ```bash
-# Quick launch with last profile
-cm -l
-
-# Skip update check for faster startup
-cm --skip-update
+# Quick launch aliases
+alias c="cm --skip-update"
+alias cy="cm --skip-update --yolo"
+alias cl="cm -l --skip-update"
 
 # Edit profile by number
 cm edit 1
 
-# Add alias to shell
-alias c="cm --skip-update"
+# Check what's installed
+cm status
 ```
+
+## How It Works
+
+1. **Profile Selection**: Choose a profile from the interactive menu
+2. **Settings Applied**: Profile config is written to `~/.claude/settings.json`
+3. **MCP Servers**: Profile's MCP servers are written to `~/.claude.json`
+4. **Claude Launched**: Claude Code starts with your selected configuration
+
+## Contributing
+
+Pull requests welcome! Please ensure no API keys or sensitive data in commits.
+
+## License
+
+MIT
