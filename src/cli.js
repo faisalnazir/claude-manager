@@ -587,35 +587,57 @@ if (cmd === 'skills') {
   };
   render(<NewProfileWizard />);
 } else {
+  // Loading animation component
+  const LoadingScreen = ({ message = 'Loading...' }) => {
+    const [dots, setDots] = useState('');
+    
+    useEffect(() => {
+      const interval = setInterval(() => {
+        setDots(d => d.length >= 3 ? '' : d + '.');
+      }, 500);
+      return () => clearInterval(interval);
+    }, []);
+
+    return (
+      <Box flexDirection="column" alignItems="center" padding={2}>
+        <Text bold color="cyan">
+          {`
+   ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+  ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+  ██║     ██║     ███████║██║   ██║██║  ██║█████╗  
+  ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  
+  ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+   ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
+          `}
+        </Text>
+        <Text bold color="magenta">MANAGER</Text>
+        <Text dimColor marginTop={1}>v{VERSION}</Text>
+        <Text color="yellow" marginTop={2}>{message}{dots}</Text>
+      </Box>
+    );
+  };
+
   // Main app
   const App = () => {
-    const [step, setStep] = useState(skipUpdate ? 'select' : 'checking');
+    const [step, setStep] = useState('loading');
     const [updateInfo, setUpdateInfo] = useState(null);
     const [filter, setFilter] = useState('');
     const profiles = loadProfiles();
 
     useEffect(() => {
+      // Show loading screen briefly, then go to select
+      setTimeout(() => setStep('select'), 800);
+      
+      // Check for updates in parallel (non-blocking)
       if (!skipUpdate) {
-        const info = checkForUpdate();
-        setUpdateInfo(info);
-        setStep(info.needsUpdate ? 'update' : 'select');
+        Promise.resolve().then(() => {
+          const info = checkForUpdate();
+          setUpdateInfo(info);
+        });
       }
     }, []);
 
     useInput((input, key) => {
-      if (step === 'update') {
-        if (input === 'y' || input === 'Y') {
-          console.log('\n\x1b[33mUpdating Claude...\x1b[0m\n');
-          try {
-            execSync('brew upgrade claude-code', { stdio: 'inherit' });
-            console.log('\n\x1b[32m✓ Updated!\x1b[0m\n');
-          } catch {}
-          setStep('select');
-        } else if (input === 'n' || input === 'N') {
-          setStep('select');
-        }
-      }
-      
       if (step === 'select') {
         // Number shortcuts
         const num = parseInt(input);
@@ -625,8 +647,17 @@ if (cmd === 'skills') {
           console.log(`\n\x1b[32m✓\x1b[0m Applied: ${profile.label}\n`);
           launchClaude();
         }
+        // Update shortcut
+        if (input === 'u' && updateInfo?.needsUpdate) {
+          console.log('\n\x1b[33mUpdating Claude...\x1b[0m\n');
+          try {
+            execSync('brew upgrade claude-code', { stdio: 'inherit' });
+            console.log('\n\x1b[32m✓ Updated!\x1b[0m\n');
+            setUpdateInfo({ ...updateInfo, needsUpdate: false });
+          } catch {}
+        }
         // Fuzzy filter
-        if (input.match(/^[a-zA-Z]$/)) {
+        if (input.match(/^[a-zA-Z]$/) && input !== 'u') {
           setFilter(f => f + input);
         }
         if (key.backspace || key.delete) {
@@ -662,26 +693,17 @@ if (cmd === 'skills') {
       filteredProfiles.forEach((p, i) => groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` }));
     }
 
-    if (step === 'checking') {
-      return <Box padding={1}><Text>Checking for updates...</Text></Box>;
-    }
-
-    if (step === 'update' && updateInfo?.needsUpdate) {
-      return (
-        <Box flexDirection="column" padding={1}>
-          <Text bold color="cyan">Claude Settings Manager</Text>
-          <Text dimColor>─────────────────────────</Text>
-          <Text color="yellow" marginTop={1}>⚠ Update available for Claude</Text>
-          <Text marginTop={1}>Install update? (y/n)</Text>
-        </Box>
-      );
+    if (step === 'loading') {
+      return <LoadingScreen message="Initializing Claude Manager" />;
     }
 
     if (profiles.length === 0) {
       return (
         <Box flexDirection="column" padding={1}>
-          <Text bold color="cyan">Claude Settings Manager</Text>
-          <Text dimColor>─────────────────────────</Text>
+          <Box flexDirection="column" alignItems="center" marginBottom={1}>
+            <Text bold color="cyan">CLAUDE MANAGER</Text>
+            <Text dimColor>─────────────────────────</Text>
+          </Box>
           <Text color="yellow" marginTop={1}>No profiles found!</Text>
           <Text>Run: cm new</Text>
         </Box>
@@ -697,12 +719,17 @@ if (cmd === 'skills') {
 
     return (
       <Box flexDirection="column" padding={1}>
-        <Text bold color="cyan">Claude Settings Manager</Text>
-        <Text dimColor>─────────────────────────</Text>
+        <Box flexDirection="column" alignItems="center" marginBottom={1}>
+          <Text bold color="cyan">CLAUDE MANAGER</Text>
+          <Text dimColor>─────────────────────────</Text>
+        </Box>
         {updateInfo?.current && <Text dimColor>Claude v{updateInfo.current}</Text>}
+        {updateInfo?.needsUpdate && (
+          <Text color="yellow">⚠ Update available! Press 'u' to upgrade</Text>
+        )}
         {filter && <Text color="yellow">Filter: {filter}</Text>}
         <Box flexDirection="column" marginTop={1}>
-          <Text>Select Profile: <Text dimColor>(1-9 quick select, type to filter)</Text></Text>
+          <Text>Select Profile: <Text dimColor>(1-9 quick select, type to filter{updateInfo?.needsUpdate ? ', u to update' : ''})</Text></Text>
           <SelectInput 
             items={groupedItems} 
             onSelect={handleSelect}
