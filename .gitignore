@@ -1,5 +1,25 @@
 node_modules/
-cm-bin
 cm
+cm-bin
 *.log
 .DS_Store
+.claude/
+
+# Build artifacts
+bun.lock
+package-lock.json
+
+# Unrelated files
+*.pptx
+*.html
+*.png
+*.cjs
+*.md
+!README.md
+launch.sh
+shell-function.sh
+zai-settings.json
+create-*.js
+update-*.js
+content-*.md
+claude-manager/
