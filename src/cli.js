@@ -7,7 +7,7 @@ import path from 'path';
 import os from 'os';
 import { execSync, spawnSync } from 'child_process';
 
-const VERSION = '1.4.0';
+const VERSION = "1.5.0";
 const PROFILES_DIR = path.join(os.homedir(), '.claude', 'profiles');
 const SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
