@@ -590,27 +590,30 @@ if (cmd === 'skills') {
   // Loading animation component
   const LoadingScreen = ({ message = 'Loading...' }) => {
     const [dots, setDots] = useState('');
+    const [colorIdx, setColorIdx] = useState(0);
+    const colors = ['cyan', 'blue', 'magenta', 'red', 'yellow', 'green'];
     
     useEffect(() => {
-      const interval = setInterval(() => {
+      const dotsInterval = setInterval(() => {
         setDots(d => d.length >= 3 ? '' : d + '.');
       }, 500);
-      return () => clearInterval(interval);
+      const colorInterval = setInterval(() => {
+        setColorIdx(i => (i + 1) % colors.length);
+      }, 200);
+      return () => { clearInterval(dotsInterval); clearInterval(colorInterval); };
     }, []);
 
     return (
       <Box flexDirection="column" padding={1}>
-        <Text bold color="cyan">
-          {`
-██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+        <Text bold color={colors[colorIdx]}>
+{`██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
 ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
 ██║     ██║     ███████║██║   ██║██║  ██║█████╗  
 ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  
 ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
  ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝`}
         </Text>
-        <Text bold color="magenta">MANAGER</Text>
-        <Text dimColor>v{VERSION}</Text>
+        <Text bold color={colors[(colorIdx + 3) % colors.length]}>MANAGER v{VERSION}</Text>
         <Text color="yellow" marginTop={1}>{message}{dots}</Text>
       </Box>
     );
