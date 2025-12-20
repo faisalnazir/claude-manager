@@ -599,20 +599,19 @@ if (cmd === 'skills') {
     }, []);
 
     return (
-      <Box flexDirection="column" alignItems="center" padding={2}>
+      <Box flexDirection="column" padding={1}>
         <Text bold color="cyan">
           {`
-   ██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
-  ██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
-  ██║     ██║     ███████║██║   ██║██║  ██║█████╗  
-  ██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  
-  ╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
-   ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝
-          `}
+██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+██║     ██║     ███████║██║   ██║██║  ██║█████╗  
+██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  
+╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝`}
         </Text>
         <Text bold color="magenta">MANAGER</Text>
-        <Text dimColor marginTop={1}>v{VERSION}</Text>
-        <Text color="yellow" marginTop={2}>{message}{dots}</Text>
+        <Text dimColor>v{VERSION}</Text>
+        <Text color="yellow" marginTop={1}>{message}{dots}</Text>
       </Box>
     );
   };
