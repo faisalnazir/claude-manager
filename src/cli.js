@@ -621,14 +621,14 @@ if (cmd === 'skills') {
 
   // Main app
   const App = () => {
-    const [step, setStep] = useState('loading');
+    const [step, setStep] = useState('select');
     const [updateInfo, setUpdateInfo] = useState(null);
     const [filter, setFilter] = useState('');
     const profiles = loadProfiles();
 
     useEffect(() => {
       // Show loading screen briefly, then go to select
-      setTimeout(() => setStep('select'), 800);
+      setTimeout(() => setStep('select'), 1500);
       
       // Check for updates in parallel (non-blocking)
       if (!skipUpdate) {
@@ -719,7 +719,15 @@ if (cmd === 'skills') {
 
     return (
       <Box flexDirection="column" padding={1}>
-        <Text bold color="cyan">CLAUDE MANAGER</Text>
+        <Text bold color="cyan">
+{`██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
+██╔════╝██║     ██╔══██╗██║   ██║██╔══██╗██╔════╝
+██║     ██║     ███████║██║   ██║██║  ██║█████╗  
+██║     ██║     ██╔══██║██║   ██║██║  ██║██╔══╝  
+╚██████╗███████╗██║  ██║╚██████╔╝██████╔╝███████╗
+ ╚═════╝╚══════╝╚═╝  ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝`}
+        </Text>
+        <Text bold color="magenta">MANAGER v{VERSION}</Text>
         <Text dimColor>─────────────────────────</Text>
         {updateInfo?.current && <Text dimColor>Claude v{updateInfo.current}</Text>}
         {updateInfo?.needsUpdate && (
