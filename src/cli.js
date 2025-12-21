@@ -519,15 +519,16 @@ if (cmd === 'skills') {
     const [step, setStep] = useState('name');
     const [name, setName] = useState('');
     const [provider, setProvider] = useState('');
+    const [apiKey, setApiKey] = useState('');
     const [model, setModel] = useState('');
     const [group, setGroup] = useState('');
 
     const providers = [
-      { label: 'Anthropic (Direct)', value: 'anthropic', url: '' },
-      { label: 'Amazon Bedrock', value: 'bedrock', url: '' },
-      { label: 'Z.AI', value: 'zai', url: 'https://api.z.ai/api/anthropic' },
-      { label: 'MiniMax', value: 'minimax', url: 'https://api.minimax.io/anthropic' },
-      { label: 'Custom', value: 'custom', url: '' },
+      { label: 'Anthropic (Direct)', value: 'anthropic', url: '', needsKey: true },
+      { label: 'Amazon Bedrock', value: 'bedrock', url: '', needsKey: false },
+      { label: 'Z.AI', value: 'zai', url: 'https://api.z.ai/api/anthropic', needsKey: true },
+      { label: 'MiniMax', value: 'minimax', url: 'https://api.minimax.io/anthropic', needsKey: true },
+      { label: 'Custom', value: 'custom', url: '', needsKey: true },
     ];
 
     const handleSave = () => {
@@ -536,7 +537,8 @@ if (cmd === 'skills') {
         name,
         group: group || undefined,
         env: {
-          ANTHROPIC_MODEL: model,
+          ...(apiKey && { ANTHROPIC_AUTH_TOKEN: apiKey }),
+          ...(model && { ANTHROPIC_MODEL: model }),
           ...(prov?.url && { ANTHROPIC_BASE_URL: prov.url }),
           API_TIMEOUT_MS: '3000000',
         },
@@ -548,6 +550,12 @@ if (cmd === 'skills') {
       fs.writeFileSync(path.join(PROFILES_DIR, filename), JSON.stringify(profile, null, 2));
       console.log(`\n\x1b[32m✓\x1b[0m Created: ${name}`);
       exit();
+    };
+
+    const handleProviderSelect = (item) => {
+      setProvider(item.value);
+      const prov = providers.find(p => p.value === item.value);
+      setStep(prov.needsKey ? 'apikey' : 'model');
     };
 
     return (
@@ -565,13 +573,20 @@ if (cmd === 'skills') {
         {step === 'provider' && (
           <Box flexDirection="column" marginTop={1}>
             <Text>Provider:</Text>
-            <SelectInput items={providers} onSelect={(item) => { setProvider(item.value); setStep('model'); }} />
+            <SelectInput items={providers} onSelect={handleProviderSelect} />
+          </Box>
+        )}
+        
+        {step === 'apikey' && (
+          <Box marginTop={1}>
+            <Text>API Key: </Text>
+            <TextInput value={apiKey} onChange={setApiKey} onSubmit={() => setStep('model')} mask="*" />
           </Box>
         )}
         
         {step === 'model' && (
           <Box marginTop={1}>
-            <Text>Model ID: </Text>
+            <Text>Model ID (optional): </Text>
             <TextInput value={model} onChange={setModel} onSubmit={() => setStep('group')} />
           </Box>
         )}
