@@ -114,8 +114,8 @@ const checkProjectProfile = () => {
 const checkForUpdate = () => {
   if (skipUpdate) return { needsUpdate: false };
   try {
-    const output = execSync('brew outdated claude-code 2>/dev/null', { encoding: 'utf8' }).trim();
     const current = execSync('claude --version 2>/dev/null', { encoding: 'utf8' }).match(/(\d+\.\d+\.\d+)/)?.[1];
+    const output = execSync('brew outdated claude-code 2>&1 || true', { encoding: 'utf8' }).trim();
     return { current, needsUpdate: output.includes('claude-code') };
   } catch {
     return { needsUpdate: false };
