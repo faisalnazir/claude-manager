@@ -7,7 +7,7 @@ import path from 'path';
 import os from 'os';
 import { execSync, spawnSync } from 'child_process';
 
-const VERSION = "1.5.1";
+const VERSION = "1.5.2";
 const PROFILES_DIR = path.join(os.homedir(), '.claude', 'profiles');
 const SETTINGS_PATH = path.join(os.homedir(), '.claude', 'settings.json');
 const CLAUDE_JSON_PATH = path.join(os.homedir(), '.claude.json');
@@ -111,12 +111,18 @@ const checkProjectProfile = () => {
   return null;
 };
 
-const checkForUpdate = () => {
+const checkForUpdate = async () => {
   if (skipUpdate) return { needsUpdate: false };
   try {
-    const current = execSync('claude --version 2>/dev/null', { encoding: 'utf8' }).match(/(\d+\.\d+\.\d+)/)?.[1];
-    const output = execSync('brew outdated claude-code 2>&1 || true', { encoding: 'utf8' }).trim();
-    return { current, needsUpdate: output.includes('claude-code') };
+    const { exec } = await import('child_process');
+    const { promisify } = await import('util');
+    const execAsync = promisify(exec);
+    const [versionResult, outdatedResult] = await Promise.all([
+      execAsync('claude --version 2>/dev/null').catch(() => ({ stdout: '' })),
+      execAsync('brew outdated claude-code 2>&1 || true').catch(() => ({ stdout: '' }))
+    ]);
+    const current = versionResult.stdout.match(/(\d+\.\d+\.\d+)/)?.[1];
+    return { current, needsUpdate: outdatedResult.stdout.includes('claude-code') };
   } catch {
     return { needsUpdate: false };
   }
@@ -647,10 +653,7 @@ if (cmd === 'skills') {
       
       // Check for updates in parallel (non-blocking)
       if (!skipUpdate) {
-        Promise.resolve().then(() => {
-          const info = checkForUpdate();
-          setUpdateInfo(info);
-        });
+        checkForUpdate().then(setUpdateInfo);
       }
     }, []);
 
