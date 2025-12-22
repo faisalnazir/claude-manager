@@ -24,3 +24,4 @@ create-*.js
 update-*.js
 content-*.md
 claude-manager/
+dist
