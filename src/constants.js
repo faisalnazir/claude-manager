@@ -2,7 +2,7 @@ import os from 'os';
 import path from 'path';
 
 // Version
-export const VERSION = "1.5.3";
+export const VERSION = "1.5.4";
 
 // ASCII Logo
 export const LOGO = `██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
