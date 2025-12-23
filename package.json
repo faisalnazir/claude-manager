@@ -1,6 +1,6 @@
 {
   "name": "claude-manager",
-  "version": "1.5.2",
+  "version": "1.5.3",
   "description": "Terminal app for managing Claude Code settings, profiles, MCP servers, and skills",
   "type": "module",
   "bin": {
@@ -11,7 +11,9 @@
     "build": "esbuild src/cli.js --platform=node --format=esm --loader:.js=jsx --outfile=dist/cli.js --packages=external && echo '#!/usr/bin/env node' | cat - dist/cli.js > dist/tmp && mv dist/tmp dist/cli.js && chmod +x dist/cli.js",
     "prepublishOnly": "npm run build"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "claude",
     "claude-code",
@@ -32,6 +34,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "fuse.js": "^7.1.0",
     "ink": "^5.1.0",
     "ink-select-input": "^6.0.0",
     "ink-text-input": "^6.0.0",
