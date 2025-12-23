@@ -8,7 +8,7 @@
     "claude-manager": "./dist/cli.js"
   },
   "scripts": {
-    "build": "esbuild src/cli.js --platform=node --format=esm --loader:.js=jsx --outfile=dist/cli.js --packages=external && echo '#!/usr/bin/env node' | cat - dist/cli.js > dist/tmp && mv dist/tmp dist/cli.js && chmod +x dist/cli.js",
+    "build": "esbuild src/cli.js --platform=node --format=esm --loader:.js=jsx --bundle --outfile=dist/cli.js --packages=external && echo '#!/usr/bin/env node' | cat - dist/cli.js > dist/tmp && mv dist/tmp dist/cli.js && chmod +x dist/cli.js",
     "prepublishOnly": "npm run build"
   },
   "files": [

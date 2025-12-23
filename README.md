@@ -2,7 +2,7 @@
 
 A powerful terminal app for managing Claude Code settings, profiles, MCP servers, and skills. Switch between different AI providers, models, and configurations with a single command.
 
-![Version](https://img.shields.io/badge/version-1.4.0-blue)
+![Version](https://img.shields.io/badge/version-1.5.3-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 ## Features
@@ -19,12 +19,27 @@ A powerful terminal app for managing Claude Code settings, profiles, MCP servers
 
 ## Installation
 
+### Option 1: Homebrew (macOS)
+
+```bash
+brew tap faisalnazir/claude-manager
+brew install claude-manager
+```
+
+### Option 2: npm
+
+```bash
+npm install -g claude-manager
+```
+
+### Option 3: curl
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/faisalnazir/claude-manager/main/install.sh | bash
 ```
 
 ### Requirements
-- [Bun](https://bun.sh) (auto-installed if missing)
+- [Node.js 18+](https://nodejs.org) (for npm install)
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
 ## Quick Start
@@ -171,6 +186,9 @@ cm edit 1
 
 # Check what's installed
 cm status
+
+# Update cm via npm
+npm update -g claude-manager
 ```
 
 ## How It Works
