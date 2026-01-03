@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { render, Box, Text, useInput, useApp } from 'ink';
 import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
-import { spawnSync, execSync } from 'child_process';
+import { spawnSync, execSync, spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import Fuse from 'fuse.js';
@@ -149,7 +149,6 @@ if (cmd === 'parallel') {
   console.log(`\x1b[1m\x1b[36mLaunching ${targetProfiles.length} Claude instances in parallel...\x1b[0m`);
   console.log(`─────────────────────────────────────────────────────────────`);
 
-  const { spawn } = require('child_process');
   const launched = [];
 
   for (let i = 0; i < targetProfiles.length; i++) {
@@ -871,7 +870,6 @@ if (cmd === 'skills') {
       console.log(`\n\x1b[1m\x1b[36mLaunching ${selectedProfilesList.length} Claude instances in parallel...\x1b[0m`);
       console.log(`─────────────────────────────────────────────────────────────`);
 
-      const { spawn } = require('child_process');
       const launched = [];
 
       for (let i = 0; i < selectedProfilesList.length; i++) {
