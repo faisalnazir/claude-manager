@@ -1299,12 +1299,44 @@ if (cmd === 'skills') {
             logError('update', error);
           }
         }
+        // Quick action shortcuts
+        if (input === 'n') {
+          render(<NewProfileWizard />);
+          return;
+        }
+        if (input === 'e') {
+          setStep('edit');
+          return;
+        }
+        if (input === 'p') {
+          setStep('parallel');
+          return;
+        }
+        if (input === 'y') {
+          setStep('yolo');
+          return;
+        }
+        if (input === 'm') {
+          render(<McpSearch />);
+          return;
+        }
+        if (input === 's') {
+          render(<SkillsBrowser />);
+          return;
+        }
+        if (input === 'i') {
+          execSync('cm status', { stdio: 'inherit' });
+          process.exit(0);
+        }
+        if (input === 'q') {
+          process.exit(0);
+        }
         if (input === '/' && !showHelp) {
           setShowCommandPalette(true);
           setCommandInput('/');
           return;
         }
-        if (input.match(/^[a-zA-Z]$/) && input !== 'u' && input !== 'c' && input !== '?' && input !== '/') {
+        if (input.match(/^[a-zA-Z]$/) && !['u', 'c', '?', '/', 'n', 'e', 'p', 'y', 'm', 's', 'i', 'q'].includes(input)) {
           setFilter(f => f + input);
         }
         if (key.backspace || key.delete) {
@@ -1398,29 +1430,123 @@ if (cmd === 'skills') {
       launchClaude(dangerMode);
     };
 
+    // Get current profile info
+    const lastProfile = getLastProfile();
+    const currentProfile = profiles.find(p => p.value === lastProfile);
+    const installedSkills = getInstalledSkills();
+    
+    // Count MCP servers across all profiles
+    const totalMcpServers = profiles.reduce((acc, p) => acc + Object.keys(p.data.mcpServers || {}).length, 0);
+
     return (
       <Box flexDirection="column" padding={1}>
-        <Text bold color="cyan">{LOGO}</Text>
-        <Text bold color="magenta">MANAGER v{VERSION}</Text>
-        <Text dimColor>─────────────────────────</Text>
-        {updateInfo?.current && <Text dimColor>Claude v{updateInfo.current}</Text>}
-        {updateInfo?.needsUpdate && (
-          <Text color="yellow">Update available! Press 'u' to upgrade</Text>
-        )}
-        {filter && <Text color="yellow">Filter: {filter}</Text>}
-        <Box flexDirection="column" marginTop={1}>
-          <Text>Select Profile: <Text dimColor>(1-9 select, / commands, ? help, c config{updateInfo?.needsUpdate ? ', u update' : ''})</Text></Text>
-          <SelectInput
-            items={groupedItems}
-            onSelect={handleSelect}
-            itemComponent={({ isSelected, label, disabled }) => (
-              <Text color={disabled ? 'gray' : isSelected ? 'cyan' : 'white'} dimColor={disabled}>
-                {disabled ? label : (isSelected ? '❯ ' : '  ') + label}
-              </Text>
+        {/* Header */}
+        <Box flexDirection="row" justifyContent="space-between">
+          <Box flexDirection="column">
+            <Text bold color="cyan">{LOGO}</Text>
+            <Text bold color="magenta">MANAGER v{VERSION}</Text>
+          </Box>
+          <Box flexDirection="column" alignItems="flex-end">
+            {updateInfo?.current && <Text dimColor>Claude v{updateInfo.current}</Text>}
+            {updateInfo?.needsUpdate && (
+              <Text color="yellow">⬆ Update available (u)</Text>
             )}
-          />
+          </Box>
+        </Box>
+        
+        <Text dimColor>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
+
+        {/* Main Content - Two Column Layout */}
+        <Box flexDirection="row" marginTop={1}>
+          
+          {/* Left Column - Profiles */}
+          <Box flexDirection="column" width="50%">
+            <Box borderStyle="round" borderColor="cyan" flexDirection="column" paddingX={1}>
+              <Text bold color="cyan">📋 PROFILES ({profiles.length})</Text>
+              {filter && <Text color="yellow">🔍 Filter: {filter}</Text>}
+              <Box flexDirection="column" marginTop={1}>
+                {filteredProfiles.slice(0, 7).map((p, i) => {
+                  const isCurrent = p.value === lastProfile;
+                  return (
+                    <Text key={p.value}>
+                      <Text color="yellow">{i + 1}</Text>
+                      <Text color={isCurrent ? "green" : "white"}>{isCurrent ? " ● " : "   "}</Text>
+                      <Text color={isCurrent ? "green" : "white"}>{p.label}</Text>
+                      {p.group && <Text dimColor> [{p.group}]</Text>}
+                    </Text>
+                  );
+                })}
+                {filteredProfiles.length > 7 && (
+                  <Text dimColor>  +{filteredProfiles.length - 7} more...</Text>
+                )}
+              </Box>
+            </Box>
+
+            {/* Current Profile Status */}
+            {currentProfile && (
+              <Box borderStyle="round" borderColor="green" flexDirection="column" paddingX={1} marginTop={1}>
+                <Text bold color="green">✓ ACTIVE PROFILE</Text>
+                <Text><Text color="cyan">{currentProfile.label}</Text></Text>
+                <Text dimColor>Model: {currentProfile.data.model || 'default'}</Text>
+                {Object.keys(currentProfile.data.mcpServers || {}).length > 0 && (
+                  <Text dimColor>MCP: {Object.keys(currentProfile.data.mcpServers).join(', ')}</Text>
+                )}
+              </Box>
+            )}
+          </Box>
+
+          {/* Right Column - Features */}
+          <Box flexDirection="column" width="50%" marginLeft={1}>
+            
+            {/* Quick Actions */}
+            <Box borderStyle="round" borderColor="magenta" flexDirection="column" paddingX={1}>
+              <Text bold color="magenta">⚡ QUICK ACTIONS</Text>
+              <Box flexDirection="column" marginTop={1}>
+                <Text><Text color="yellow">n</Text> <Text color="cyan">New Profile</Text></Text>
+                <Text><Text color="yellow">e</Text> <Text color="cyan">Edit Profile</Text></Text>
+                <Text><Text color="yellow">p</Text> <Text color="cyan">Parallel Launch</Text> <Text dimColor>🚀</Text></Text>
+                <Text><Text color="yellow">y</Text> <Text color="cyan">YOLO Mode</Text> <Text dimColor>⚡</Text></Text>
+              </Box>
+            </Box>
+
+            {/* Extensions */}
+            <Box borderStyle="round" borderColor="yellow" flexDirection="column" paddingX={1} marginTop={1}>
+              <Text bold color="yellow">🔌 EXTENSIONS</Text>
+              <Box flexDirection="column" marginTop={1}>
+                <Text><Text color="yellow">m</Text> <Text color="cyan">MCP Servers</Text> <Text dimColor>({totalMcpServers} installed)</Text></Text>
+                <Text><Text color="yellow">s</Text> <Text color="cyan">Skills</Text> <Text dimColor>({installedSkills.length} installed)</Text></Text>
+              </Box>
+            </Box>
+
+            {/* Info */}
+            <Box borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1} marginTop={1}>
+              <Text bold color="gray">📊 INFO</Text>
+              <Box flexDirection="column" marginTop={1}>
+                <Text><Text color="yellow">i</Text> <Text dimColor>Status</Text></Text>
+                <Text><Text color="yellow">c</Text> <Text dimColor>Config</Text></Text>
+                <Text><Text color="yellow">?</Text> <Text dimColor>Help</Text></Text>
+              </Box>
+            </Box>
+          </Box>
         </Box>
 
+        <Text dimColor marginTop={1}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
+        
+        {/* Footer - Keyboard hints */}
+        <Box flexDirection="row" justifyContent="space-between" marginTop={1}>
+          <Text dimColor>
+            <Text color="yellow">1-9</Text> select • 
+            <Text color="yellow">↑↓</Text> navigate • 
+            <Text color="yellow">Enter</Text> launch • 
+            <Text color="yellow">a-z</Text> filter • 
+            <Text color="yellow">/</Text> commands
+          </Text>
+          <Text dimColor>
+            <Text color="yellow">q</Text> quit
+          </Text>
+        </Box>
+
+        {/* Command Palette Overlay */}
         {showCommandPalette && (
           <Box flexDirection="column" padding={1} marginTop={1} borderStyle="double" borderColor="magenta">
             <Text bold color="magenta">Command Palette</Text>
@@ -1454,23 +1580,27 @@ if (cmd === 'skills') {
           <Box flexDirection="column" padding={1} marginTop={1} borderStyle="single" borderColor="cyan">
             <Text bold color="cyan">Keyboard Shortcuts</Text>
             <Text dimColor>─────────────────────────</Text>
-            <Text bold color="magenta">Navigation</Text>
-            <Text>  <Text color="yellow">1-9</Text>     Quick select profile</Text>
-            <Text>  <Text color="yellow">↑/↓</Text>     Navigate list</Text>
-            <Text>  <Text color="yellow">Enter</Text>   Select profile</Text>
-            <Text bold color="magenta" marginTop={1}>Search</Text>
-            <Text>  <Text color="yellow">a-z</Text>     Fuzzy filter profiles</Text>
-            <Text>  <Text color="yellow">Backspace</Text> Delete filter character</Text>
-            <Text>  <Text color="yellow">Escape</Text>   Clear filter</Text>
-            {updateInfo?.needsUpdate && <Text bold color="magenta" marginTop={1}><Text color="yellow">u</Text>       Update Claude</Text>}
-            <Text bold color="magenta" marginTop={1}>Help</Text>
-            <Text>  <Text color="yellow">?</Text>       Toggle this help</Text>
-            <Text>  <Text color="yellow">q</Text>       Close help</Text>
-            <Text bold color="magenta" marginTop={1}>CLI Commands</Text>
-            <Text dimColor>  cm new       Create new profile</Text>
-            <Text dimColor>  cm config    Edit Claude settings</Text>
-            <Text dimColor>  cm status    Show current settings</Text>
-            <Text dimColor>  cm --help    Show all commands</Text>
+            <Box flexDirection="row">
+              <Box flexDirection="column" width="50%">
+                <Text bold color="magenta">Navigation</Text>
+                <Text>  <Text color="yellow">1-9</Text>     Quick select profile</Text>
+                <Text>  <Text color="yellow">↑/↓</Text>     Navigate list</Text>
+                <Text>  <Text color="yellow">Enter</Text>   Select & launch</Text>
+                <Text bold color="magenta" marginTop={1}>Search</Text>
+                <Text>  <Text color="yellow">a-z</Text>     Fuzzy filter</Text>
+                <Text>  <Text color="yellow">Esc</Text>     Clear filter</Text>
+              </Box>
+              <Box flexDirection="column" width="50%">
+                <Text bold color="magenta">Actions</Text>
+                <Text>  <Text color="yellow">n</Text>       New profile</Text>
+                <Text>  <Text color="yellow">e</Text>       Edit profile</Text>
+                <Text>  <Text color="yellow">p</Text>       Parallel launch</Text>
+                <Text>  <Text color="yellow">y</Text>       YOLO mode</Text>
+                <Text>  <Text color="yellow">m</Text>       MCP servers</Text>
+                <Text>  <Text color="yellow">s</Text>       Skills</Text>
+              </Box>
+            </Box>
+            <Text dimColor marginTop={1}>Press ? or Esc to close</Text>
           </Box>
         )}
       </Box>
