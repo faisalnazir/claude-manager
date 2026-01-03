@@ -968,6 +968,214 @@ if (cmd === 'skills') {
     );
   };
 
+  // Profile Action Selector (edit, copy, delete, yolo)
+  const ProfileActionSelector = ({ profiles, action }) => {
+    const { exit } = useApp();
+    const [copyName, setCopyName] = useState('');
+    const [showCopyInput, setShowCopyInput] = useState(false);
+    const [selectedProfile, setSelectedProfile] = useState(null);
+
+    const titles = {
+      edit: 'EDIT PROFILE',
+      copy: 'COPY PROFILE', 
+      delete: 'DELETE PROFILE',
+      yolo: 'YOLO LAUNCH'
+    };
+
+    const colors = {
+      edit: 'cyan',
+      copy: 'green',
+      delete: 'red',
+      yolo: 'yellow'
+    };
+
+    useInput((input, key) => {
+      if (showCopyInput) {
+        if (key.return && copyName.trim()) {
+          execSync(`cm copy "${selectedProfile.label}" "${copyName}"`, { stdio: 'inherit' });
+          exit();
+        }
+        if (key.escape) {
+          setShowCopyInput(false);
+          setCopyName('');
+        }
+        return;
+      }
+
+      const num = safeParseInt(input, -1);
+      if (num >= 1 && num <= profiles.length) {
+        const profile = profiles[num - 1];
+        if (action === 'edit') {
+          const editor = process.env.EDITOR || 'nano';
+          const filePath = path.join(PROFILES_DIR, profile.value);
+          console.clear();
+          spawnSync(editor, [filePath], { stdio: 'inherit' });
+          exit();
+        } else if (action === 'copy') {
+          setSelectedProfile(profile);
+          setShowCopyInput(true);
+        } else if (action === 'delete') {
+          execSync(`cm delete "${profile.label}" --force`, { stdio: 'inherit' });
+          exit();
+        } else if (action === 'yolo') {
+          applyProfile(profile.value);
+          console.log(`\n\x1b[32m✓\x1b[0m Applied: ${profile.label}\n`);
+          launchClaude(true);
+        }
+      }
+      if (key.escape) exit();
+    });
+
+    if (showCopyInput) {
+      return (
+        <Box flexDirection="column" padding={1}>
+          <Text bold color="green">COPY PROFILE</Text>
+          <Text dimColor>─────────────────────────</Text>
+          <Text marginTop={1}>Copying: <Text color="cyan">{selectedProfile?.label}</Text></Text>
+          <Box marginTop={1}>
+            <Text>New name: </Text>
+            <TextInput value={copyName} onChange={setCopyName} />
+          </Box>
+          <Text dimColor marginTop={1}>Enter to confirm • Esc to cancel</Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color={colors[action]}>{titles[action]}</Text>
+        <Text dimColor>─────────────────────────</Text>
+        <Text color="yellow" marginTop={1}>Select a profile:</Text>
+        <Box flexDirection="column" marginTop={1}>
+          {profiles.map((p, i) => (
+            <Text key={p.value}>
+              <Text color="gray">{i + 1}. </Text>
+              <Text>{p.group ? `[${p.group}] ` : ''}{p.label}</Text>
+            </Text>
+          ))}
+        </Box>
+        <Text dimColor marginTop={1}>Press 1-{profiles.length} to select • Esc to cancel</Text>
+      </Box>
+    );
+  };
+
+  // MCP Remove Selector
+  const McpRemoveSelector = ({ profiles }) => {
+    const { exit } = useApp();
+    const [step, setStep] = useState('profile');
+    const [selectedProfile, setSelectedProfile] = useState(null);
+    const [mcpServers, setMcpServers] = useState([]);
+
+    useInput((input, key) => {
+      const num = safeParseInt(input, -1);
+      
+      if (step === 'profile') {
+        if (num >= 1 && num <= profiles.length) {
+          const profile = profiles[num - 1];
+          setSelectedProfile(profile);
+          const servers = Object.keys(profile.data.mcpServers || {});
+          if (servers.length === 0) {
+            console.log('\n\x1b[33mNo MCP servers in this profile\x1b[0m');
+            exit();
+          }
+          setMcpServers(servers);
+          setStep('server');
+        }
+      } else if (step === 'server') {
+        if (num >= 1 && num <= mcpServers.length) {
+          const serverName = mcpServers[num - 1];
+          const profilePath = path.join(PROFILES_DIR, selectedProfile.value);
+          const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+          delete profileData.mcpServers[serverName];
+          fs.writeFileSync(profilePath, JSON.stringify(profileData, null, 2));
+          console.log(`\n\x1b[32m✓\x1b[0m Removed MCP server: ${serverName}`);
+          exit();
+        }
+      }
+      if (key.escape) exit();
+    });
+
+    if (step === 'server') {
+      return (
+        <Box flexDirection="column" padding={1}>
+          <Text bold color="red">REMOVE MCP SERVER</Text>
+          <Text dimColor>─────────────────────────</Text>
+          <Text marginTop={1}>Profile: <Text color="cyan">{selectedProfile?.label}</Text></Text>
+          <Text color="yellow" marginTop={1}>Select server to remove:</Text>
+          <Box flexDirection="column" marginTop={1}>
+            {mcpServers.map((s, i) => (
+              <Text key={s}><Text color="gray">{i + 1}. </Text><Text>{s}</Text></Text>
+            ))}
+          </Box>
+          <Text dimColor marginTop={1}>Press 1-{mcpServers.length} to remove • Esc to cancel</Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="red">REMOVE MCP SERVER</Text>
+        <Text dimColor>─────────────────────────</Text>
+        <Text color="yellow" marginTop={1}>Select profile:</Text>
+        <Box flexDirection="column" marginTop={1}>
+          {profiles.map((p, i) => {
+            const count = Object.keys(p.data.mcpServers || {}).length;
+            return (
+              <Text key={p.value}>
+                <Text color="gray">{i + 1}. </Text>
+                <Text>{p.label} </Text>
+                <Text dimColor>({count} servers)</Text>
+              </Text>
+            );
+          })}
+        </Box>
+        <Text dimColor marginTop={1}>Press 1-{profiles.length} to select • Esc to cancel</Text>
+      </Box>
+    );
+  };
+
+  // Skills Remove Selector
+  const SkillsRemoveSelector = () => {
+    const { exit } = useApp();
+    const skills = getInstalledSkills();
+
+    useInput((input, key) => {
+      const num = safeParseInt(input, -1);
+      if (num >= 1 && num <= skills.length) {
+        const skill = skills[num - 1];
+        removeSkill(skill);
+        console.log(`\n\x1b[32m✓\x1b[0m Removed skill: ${skill}`);
+        exit();
+      }
+      if (key.escape) exit();
+    });
+
+    if (skills.length === 0) {
+      return (
+        <Box flexDirection="column" padding={1}>
+          <Text bold color="red">REMOVE SKILL</Text>
+          <Text dimColor>─────────────────────────</Text>
+          <Text color="yellow" marginTop={1}>No skills installed</Text>
+          <Text dimColor marginTop={1}>Press Esc to go back</Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="red">REMOVE SKILL</Text>
+        <Text dimColor>─────────────────────────</Text>
+        <Text color="yellow" marginTop={1}>Select skill to remove:</Text>
+        <Box flexDirection="column" marginTop={1}>
+          {skills.map((s, i) => (
+            <Text key={s}><Text color="gray">{i + 1}. </Text><Text>{s}</Text></Text>
+          ))}
+        </Box>
+        <Text dimColor marginTop={1}>Press 1-{skills.length} to remove • Esc to cancel</Text>
+      </Box>
+    );
+  };
+
   const App = () => {
     const [step, setStep] = useState('loading');
     const [updateInfo, setUpdateInfo] = useState(null);
@@ -978,15 +1186,28 @@ if (cmd === 'skills') {
     const profiles = loadProfiles();
 
     const commands = [
-      { label: '/skills', description: 'Browse and install skills', action: () => render(<SkillsBrowser />) },
-      { label: '/mcp', description: 'Search and add MCP servers', action: () => render(<McpSearch />) },
-      { label: '/parallel', description: 'Launch multiple profiles in parallel', action: () => setStep('parallel') },
-      { label: '/new', description: 'Create new profile', action: () => setStep('newProfile') },
-      { label: '/list', description: 'List all profiles', action: () => execSync('cm list', { stdio: 'inherit' }) },
-      { label: '/status', description: 'Show current settings', action: () => execSync('cm status', { stdio: 'inherit' }) },
-      { label: '/config', description: 'Edit Claude settings', action: () => execSync('cm config', { stdio: 'inherit' }) },
-      { label: '/help', description: 'Show keyboard shortcuts', action: () => setShowHelp(true) },
-      { label: '/quit', description: 'Exit cm', action: () => process.exit(0) },
+      // Profile Management
+      { label: '/new', description: 'Create new profile', icon: '➕', category: 'Profiles', action: () => render(<NewProfileWizard />) },
+      { label: '/edit', description: 'Edit a profile', icon: '✏️', category: 'Profiles', action: () => setStep('edit') },
+      { label: '/copy', description: 'Duplicate a profile', icon: '📋', category: 'Profiles', action: () => setStep('copy') },
+      { label: '/delete', description: 'Delete a profile', icon: '🗑️', category: 'Profiles', action: () => setStep('delete') },
+      { label: '/list', description: 'List all profiles', icon: '📄', category: 'Profiles', action: () => { execSync('cm list', { stdio: 'inherit' }); process.exit(0); } },
+      
+      // Launch Options
+      { label: '/parallel', description: 'Launch multiple profiles in parallel', icon: '🚀', category: 'Launch', action: () => setStep('parallel') },
+      { label: '/yolo', description: 'Launch with --dangerously-skip-permissions', icon: '⚡', category: 'Launch', action: () => setStep('yolo') },
+      
+      // Extensions
+      { label: '/mcp', description: 'Search and add MCP servers', icon: '🔌', category: 'Extensions', action: () => render(<McpSearch />) },
+      { label: '/mcp-remove', description: 'Remove MCP server from profile', icon: '🔌', category: 'Extensions', action: () => setStep('mcp-remove') },
+      { label: '/skills', description: 'Browse and install skills', icon: '🎯', category: 'Extensions', action: () => render(<SkillsBrowser />) },
+      { label: '/skills-remove', description: 'Remove an installed skill', icon: '🎯', category: 'Extensions', action: () => setStep('skills-remove') },
+      
+      // Settings & Info
+      { label: '/status', description: 'Show current settings & info', icon: '📊', category: 'Info', action: () => { execSync('cm status', { stdio: 'inherit' }); process.exit(0); } },
+      { label: '/config', description: 'Edit Claude settings.json', icon: '⚙️', category: 'Info', action: () => { execSync('cm config', { stdio: 'inherit' }); process.exit(0); } },
+      { label: '/help', description: 'Show keyboard shortcuts', icon: '❓', category: 'Info', action: () => setShowHelp(true) },
+      { label: '/quit', description: 'Exit cm', icon: '🚪', category: 'Info', action: () => process.exit(0) },
     ];
 
     const filteredProfiles = useMemo(() => {
@@ -1135,6 +1356,30 @@ if (cmd === 'skills') {
       return <ParallelSelector profiles={profiles} dangerMode={dangerMode} />;
     }
 
+    if (step === 'edit') {
+      return <ProfileActionSelector profiles={profiles} action="edit" />;
+    }
+
+    if (step === 'copy') {
+      return <ProfileActionSelector profiles={profiles} action="copy" />;
+    }
+
+    if (step === 'delete') {
+      return <ProfileActionSelector profiles={profiles} action="delete" />;
+    }
+
+    if (step === 'yolo') {
+      return <ProfileActionSelector profiles={profiles} action="yolo" />;
+    }
+
+    if (step === 'mcp-remove') {
+      return <McpRemoveSelector profiles={profiles} />;
+    }
+
+    if (step === 'skills-remove') {
+      return <SkillsRemoveSelector />;
+    }
+
     if (profiles.length === 0) {
       return (
         <Box flexDirection="column" padding={1}>
@@ -1179,21 +1424,29 @@ if (cmd === 'skills') {
         {showCommandPalette && (
           <Box flexDirection="column" padding={1} marginTop={1} borderStyle="double" borderColor="magenta">
             <Text bold color="magenta">Command Palette</Text>
-            <Text dimColor>─────────────────────────</Text>
+            <Text dimColor>─────────────────────────────────────────</Text>
             <Box marginTop={1}>
               <Text color="cyan">{'>'}</Text>
               <Text color="white">{commandInput}</Text>
             </Box>
-            <Text dimColor marginTop={1}>Available commands:</Text>
-            {filteredCommands.map((cmd, i) => (
-              <Text key={cmd.label}>
-                <Text color="cyan">{cmd.label}</Text>
-                <Text dimColor> - </Text>
-                <Text color="gray">{cmd.description}</Text>
-              </Text>
-            ))}
-            <Text dimColor marginTop={1}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
-            <Text dimColor>Enter to execute • Esc to close</Text>
+            {(() => {
+              const categories = [...new Set(filteredCommands.map(c => c.category))];
+              return categories.map(cat => (
+                <Box key={cat} flexDirection="column" marginTop={1}>
+                  <Text bold color="yellow">{cat}</Text>
+                  {filteredCommands.filter(c => c.category === cat).map(cmd => (
+                    <Text key={cmd.label}>
+                      <Text>{cmd.icon || '•'} </Text>
+                      <Text color="cyan">{cmd.label}</Text>
+                      <Text dimColor> - </Text>
+                      <Text color="gray">{cmd.description}</Text>
+                    </Text>
+                  ))}
+                </Box>
+              ));
+            })()}
+            <Text dimColor marginTop={1}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
+            <Text dimColor>Enter to execute • Esc to close • Type to filter</Text>
           </Box>
         )}
 
