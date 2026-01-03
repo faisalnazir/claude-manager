@@ -24,6 +24,7 @@ export const MODELS = {
     { label: 'GLM 4.6', value: 'glm-4.6' },
   ],
   minimax: [
+    { label: 'MiniMax-M2.1', value: 'MiniMax-M2.1' },
     { label: 'MiniMax-01', value: 'minimax-01' },
   ],
 };

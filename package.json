@@ -1,6 +1,6 @@
 {
   "name": "claude-manager",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Terminal app for managing Claude Code settings, profiles, MCP servers, and skills",
   "type": "module",
   "bin": {

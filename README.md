@@ -144,13 +144,15 @@ Profiles are stored in `~/.claude/profiles/*.json`
 
 Pre-configured in `cm new`:
 
-| Provider | Base URL |
-|----------|----------|
-| Anthropic (Direct) | Default |
-| Amazon Bedrock | Default |
-| Z.AI | `https://api.z.ai/api/anthropic` |
-| MiniMax | `https://api.minimax.io/anthropic` |
-| Custom | Your URL |
+| Provider | Base URL | Notes |
+|----------|----------|-------|
+| Anthropic (Direct) | Default | Standard `sk-ant-` keys |
+| Amazon Bedrock | Default | No API key needed |
+| Z.AI | `https://api.z.ai/api/anthropic` | Standard `sk-ant-` keys |
+| MiniMax | `https://api.minimax.io/anthropic` | Supports both `sk-ant-` and `sk-cp-` (coding plan) keys |
+| Custom | Your URL | Depends on provider |
+
+**MiniMax Coding Plan Keys**: If you have a MiniMax coding plan subscription, get your `sk-cp-` key from the [Account/Coding Plan](https://platform.minimax.io/user-center/payment/coding-plan) page. Regular platform keys (`sk-ant-`) are available from the [API Keys](https://platform.minimax.io/user-center/basic-information/interface-key) page.
 
 ## Per-Project Profiles
 

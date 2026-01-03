@@ -166,9 +166,21 @@ export const validateProfile = (profile) => {
   // Validate API key format if present
   if (profile.env?.ANTHROPIC_AUTH_TOKEN) {
     const key = profile.env.ANTHROPIC_AUTH_TOKEN;
-    if (!key.startsWith('sk-ant-')) {
-      errors.push('API key should start with "sk-ant-"');
+    const baseUrl = profile.env?.ANTHROPIC_BASE_URL || '';
+    const isMiniMax = baseUrl.includes('minimax.io') || baseUrl.includes('minimaxi.com');
+    
+    if (isMiniMax) {
+      // MiniMax supports both regular keys (sk-ant-) and coding plan keys (sk-cp-)
+      if (!key.startsWith('sk-ant-') && !key.startsWith('sk-cp-')) {
+        errors.push('MiniMax API key should start with "sk-ant-" or "sk-cp-" (for coding plans)');
+      }
+    } else {
+      // Standard Anthropic validation
+      if (!key.startsWith('sk-ant-')) {
+        errors.push('API key should start with "sk-ant-"');
+      }
     }
+    
     if (key.length < 20) {
       errors.push('API key appears too short');
     }
@@ -181,6 +193,7 @@ export const validateProfile = (profile) => {
       /^claude-\d+(\.\d+)?(-\d+)?$/,
       /^glm-/,
       /^minimax-/,
+      /^MiniMax-M\d+(\.\d+)?$/,
       /^anthropic\.claude-/
     ];
     if (!validPatterns.some(p => p.test(model))) {

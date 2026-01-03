@@ -68,6 +68,8 @@ Commands:
   delete <n>      Delete profile (by name or number)
   status          Show current settings
   list            List all profiles
+  parallel <profiles...>  Launch multiple Claude instances with different profiles
+  parallel list   Show available profiles for parallel launch
   config          Open Claude settings.json in editor
   mcp [query]     Search and add MCP servers
   mcp remove      Remove MCP server from profile
@@ -81,7 +83,12 @@ Options:
   --yolo          Run claude with --dangerously-skip-permissions
   --force, -f     Skip confirmation prompts (e.g., for delete)
   -v, --version   Show version
-  -h, --help      Show help`);
+  -h, --help      Show help
+
+Examples:
+  cm parallel "Z.AI (GLM)" "Anthropic Direct"     Launch 2 instances
+  cm parallel 1 2 3                              Launch first 3 profiles
+  cm parallel list                               Show available profiles`);
   process.exit(0);
 }
 
@@ -116,6 +123,107 @@ if (projectProfile && !cmd) {
 }
 
 // Handle commands
+if (cmd === 'parallel') {
+  const profiles = loadProfiles();
+  
+  if (args[1] === 'list') {
+    console.log(`\x1b[1m\x1b[36mAvailable Profiles for Parallel Launch\x1b[0m`);
+    console.log(`─────────────────────────────────────────`);
+    profiles.forEach((p, i) => {
+      const group = p.group ? `\x1b[33m[${p.group}]\x1b[0m ` : '';
+      console.log(`${i + 1}. ${group}${p.label}`);
+    });
+    console.log(`\nUsage: cm parallel <profile1> [profile2] [profile3]`);
+    console.log(`Example: cm parallel "Z.AI (GLM)" "Anthropic Direct" "MiniMax"`);
+    process.exit(0);
+  }
+
+  const targetProfiles = args.slice(1);
+  
+  if (targetProfiles.length === 0) {
+    console.log('\x1b[31mUsage: cm parallel <profile1> [profile2] [profile3]\x1b[0m');
+    console.log('Use "cm parallel list" to see available profiles');
+    process.exit(1);
+  }
+
+  console.log(`\x1b[1m\x1b[36mLaunching ${targetProfiles.length} Claude instances in parallel...\x1b[0m`);
+  console.log(`─────────────────────────────────────────────────────────────`);
+
+  const { spawn } = require('child_process');
+  const launched = [];
+
+  for (let i = 0; i < targetProfiles.length; i++) {
+    const target = targetProfiles[i];
+    
+    // Find profile by name or number
+    const idx = safeParseInt(target, -1);
+    const match = idx > 0 && idx <= profiles.length
+      ? profiles[idx - 1]
+      : profiles.find(p => p.label.toLowerCase() === target?.toLowerCase());
+
+    if (!match) {
+      console.log(`\x1b[31m✗ Profile not found: ${target}\x1b[0m`);
+      continue;
+    }
+
+    // Create temporary settings file for this instance
+    const tempSettingsPath = path.join(process.env.HOME, `.claude-parallel-${i}.json`);
+    const profilePath = path.join(PROFILES_DIR, match.value);
+    
+    try {
+      const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+      fs.writeFileSync(tempSettingsPath, JSON.stringify(profileData, null, 2));
+      
+      console.log(`\x1b[32m✓\x1b[0m Setting up: ${match.label}`);
+      
+      // Launch Claude with the temporary settings file
+      const claudeArgs = ['--settings', tempSettingsPath];
+      if (dangerMode) {
+        claudeArgs.push('--dangerously-skip-permissions');
+      }
+      
+      const child = spawn('claude', claudeArgs, {
+        detached: true,
+        stdio: 'ignore'
+      });
+      
+      child.unref(); // Allow parent to exit
+      
+      launched.push({
+        profile: match.label,
+        settingsFile: tempSettingsPath,
+        pid: child.pid
+      });
+      
+      // Brief delay between launches
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+    } catch (error) {
+      console.log(`\x1b[31m✗ Failed to launch ${match.label}: ${error.message}\x1b[0m`);
+    }
+  }
+
+  if (launched.length > 0) {
+    console.log(`\n\x1b[32m✓ Successfully launched ${launched.length} Claude instances!\x1b[0m`);
+    console.log(`\nRunning instances:`);
+    launched.forEach((instance, i) => {
+      console.log(`  ${i + 1}. ${instance.profile} (PID: ${instance.pid})`);
+    });
+    
+    console.log(`\nSettings files created:`);
+    launched.forEach((instance, i) => {
+      console.log(`  ~/.claude-parallel-${i}.json`);
+    });
+    
+    console.log(`\n\x1b[33mTo clean up settings files later:\x1b[0m`);
+    console.log(`  rm ~/.claude-parallel-*.json`);
+  } else {
+    console.log(`\x1b[31mNo instances were launched successfully\x1b[0m`);
+  }
+  
+  process.exit(0);
+}
+
 if (cmd === 'status') {
   const last = getLastProfile();
   const profiles = loadProfiles();
@@ -722,6 +830,144 @@ if (cmd === 'skills') {
     );
   };
 
+  const ParallelSelector = ({ profiles, dangerMode }) => {
+    const { exit } = useApp();
+    const [selectedProfiles, setSelectedProfiles] = useState(new Set());
+    const [step, setStep] = useState('select');
+
+    useInput((input, key) => {
+      if (step === 'select') {
+        const num = safeParseInt(input, -1);
+        if (num >= 1 && num <= 9 && num <= profiles.length) {
+          const profile = profiles[num - 1];
+          const newSelected = new Set(selectedProfiles);
+          if (newSelected.has(profile.value)) {
+            newSelected.delete(profile.value);
+          } else {
+            newSelected.add(profile.value);
+          }
+          setSelectedProfiles(newSelected);
+        }
+        if (key.return && selectedProfiles.size > 0) {
+          setStep('launching');
+          launchParallelInstances();
+        }
+        if (key.escape) {
+          exit();
+        }
+        if (input === 'a') {
+          // Select all
+          setSelectedProfiles(new Set(profiles.map(p => p.value)));
+        }
+        if (input === 'c') {
+          // Clear all
+          setSelectedProfiles(new Set());
+        }
+      }
+    });
+
+    const launchParallelInstances = async () => {
+      const selectedProfilesList = profiles.filter(p => selectedProfiles.has(p.value));
+      console.log(`\n\x1b[1m\x1b[36mLaunching ${selectedProfilesList.length} Claude instances in parallel...\x1b[0m`);
+      console.log(`─────────────────────────────────────────────────────────────`);
+
+      const { spawn } = require('child_process');
+      const launched = [];
+
+      for (let i = 0; i < selectedProfilesList.length; i++) {
+        const profile = selectedProfilesList[i];
+        const tempSettingsPath = path.join(process.env.HOME, `.claude-parallel-${i}.json`);
+        const profilePath = path.join(PROFILES_DIR, profile.value);
+        
+        try {
+          const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
+          fs.writeFileSync(tempSettingsPath, JSON.stringify(profileData, null, 2));
+          
+          console.log(`\x1b[32m✓\x1b[0m Setting up: ${profile.label}`);
+          
+          const claudeArgs = ['--settings', tempSettingsPath];
+          if (dangerMode) {
+            claudeArgs.push('--dangerously-skip-permissions');
+          }
+          
+          const child = spawn('claude', claudeArgs, {
+            detached: true,
+            stdio: 'ignore'
+          });
+          
+          child.unref();
+          
+          launched.push({
+            profile: profile.label,
+            settingsFile: tempSettingsPath,
+            pid: child.pid
+          });
+          
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+        } catch (error) {
+          console.log(`\x1b[31m✗ Failed to launch ${profile.label}: ${error.message}\x1b[0m`);
+        }
+      }
+
+      if (launched.length > 0) {
+        console.log(`\n\x1b[32m✓ Successfully launched ${launched.length} Claude instances!\x1b[0m`);
+        console.log(`\nRunning instances:`);
+        launched.forEach((instance, i) => {
+          console.log(`  ${i + 1}. ${instance.profile} (PID: ${instance.pid})`);
+        });
+        
+        console.log(`\n\x1b[33mTo clean up settings files later:\x1b[0m`);
+        console.log(`  rm ~/.claude-parallel-*.json`);
+      } else {
+        console.log(`\x1b[31mNo instances were launched successfully\x1b[0m`);
+      }
+      
+      exit();
+    };
+
+    if (step === 'launching') {
+      return (
+        <Box flexDirection="column" padding={1}>
+          <Text bold color="cyan">PARALLEL LAUNCHER</Text>
+          <Text dimColor>─────────────────────────</Text>
+          <Text color="yellow" marginTop={1}>Launching Claude instances...</Text>
+        </Box>
+      );
+    }
+
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold color="cyan">PARALLEL LAUNCHER</Text>
+        <Text dimColor>─────────────────────────</Text>
+        <Text color="yellow" marginTop={1}>Select profiles to launch in parallel:</Text>
+        
+        <Box flexDirection="column" marginTop={1}>
+          {profiles.map((profile, i) => {
+            const isSelected = selectedProfiles.has(profile.value);
+            const group = profile.group ? `[${profile.group}] ` : '';
+            return (
+              <Text key={profile.value}>
+                <Text color={isSelected ? "green" : "gray"}>
+                  {isSelected ? "✓" : " "} {i + 1}. {group}{profile.label}
+                </Text>
+              </Text>
+            );
+          })}
+        </Box>
+
+        <Box flexDirection="column" marginTop={1} borderStyle="single" borderColor="gray">
+          <Text bold color="magenta">Controls:</Text>
+          <Text><Text color="yellow">1-9</Text>     Toggle profile selection</Text>
+          <Text><Text color="yellow">a</Text>       Select all profiles</Text>
+          <Text><Text color="yellow">c</Text>       Clear all selections</Text>
+          <Text><Text color="yellow">Enter</Text>   Launch selected profiles ({selectedProfiles.size})</Text>
+          <Text><Text color="yellow">Esc</Text>     Back to main menu</Text>
+        </Box>
+      </Box>
+    );
+  };
+
   const App = () => {
     const [step, setStep] = useState('loading');
     const [updateInfo, setUpdateInfo] = useState(null);
@@ -734,6 +980,7 @@ if (cmd === 'skills') {
     const commands = [
       { label: '/skills', description: 'Browse and install skills', action: () => render(<SkillsBrowser />) },
       { label: '/mcp', description: 'Search and add MCP servers', action: () => render(<McpSearch />) },
+      { label: '/parallel', description: 'Launch multiple profiles in parallel', action: () => setStep('parallel') },
       { label: '/new', description: 'Create new profile', action: () => setStep('newProfile') },
       { label: '/list', description: 'List all profiles', action: () => execSync('cm list', { stdio: 'inherit' }) },
       { label: '/status', description: 'Show current settings', action: () => execSync('cm status', { stdio: 'inherit' }) },
@@ -882,6 +1129,10 @@ if (cmd === 'skills') {
 
     if (step === 'loading') {
       return <LoadingScreen message="Initializing Claude Manager" />;
+    }
+
+    if (step === 'parallel') {
+      return <ParallelSelector profiles={profiles} dangerMode={dangerMode} />;
     }
 
     if (profiles.length === 0) {
