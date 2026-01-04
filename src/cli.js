@@ -43,6 +43,15 @@ import {
   logError,
 } from './utils.js';
 
+import {
+  sessionManager,
+  workflowEngine,
+  templateManager,
+  taskQueue,
+  hooksManager,
+  analytics,
+} from './orchestrator.js';
+
 // Ensure profiles directory exists
 ensureProfilesDir();
 
@@ -56,24 +65,52 @@ if (args.includes('-v') || args.includes('--version')) {
 }
 
 if (args.includes('-h') || args.includes('--help')) {
-  console.log(`cm v${VERSION} - Claude Settings Manager
+  console.log(`cm v${VERSION} - Claude Development Orchestrator
 
 Usage: cm [command] [options]
 
-Commands:
+Profile Management:
   (none)          Select profile interactively
   new             Create a new profile
   edit <n>        Edit profile (by name or number)
   copy <n> <new>  Copy/duplicate a profile
   delete <n>      Delete profile (by name or number)
-  status          Show current settings
   list            List all profiles
+  status          Show current settings
   config          Open Claude settings.json in editor
+
+MCP & Skills:
   mcp [query]     Search and add MCP servers
   mcp remove      Remove MCP server from profile
   skills          Browse and add Anthropic skills
   skills list     List installed skills
   skills remove   Remove an installed skill
+
+Orchestration:
+  session list    List all sessions
+  session end <id>    End a session
+  session kill <id>   Kill a session
+  session clean   Clean old sessions
+
+  workflow list   List all workflows
+  workflow create Create a new workflow
+  workflow run <id>   Execute a workflow
+  workflow delete <id> Delete a workflow
+
+  template list   List project templates
+  template create <name> <dir>  Create project from template
+
+  task list       List all tasks
+  task add <cmd>  Add task to queue
+  task run <id>   Run a task
+  task queue      Process task queue
+
+  hook list       List all hooks
+  hook add <event> <script>  Add a hook
+  hook remove <event>        Remove a hook
+
+  stats           Show orchestration statistics
+  batch <cmd>     Run command across all profiles
 
 Options:
   --last, -l      Use last profile without menu
@@ -162,6 +199,344 @@ if (cmd === 'status') {
   }
   process.exit(0);
 }
+
+// ============= ORCHESTRATION COMMANDS =============
+
+// Session management
+if (cmd === 'session') {
+  const subCmd = args[1];
+
+  if (subCmd === 'list') {
+    const sessions = sessionManager.listSessions();
+    console.log(`\x1b[1m\x1b[36mSessions\x1b[0m (${sessions.length})`);
+    console.log(`─────────────────────────`);
+    if (sessions.length === 0) {
+      console.log('No sessions found');
+    } else {
+      sessions.forEach(s => {
+        const status = s.status === 'active' ? '\x1b[32mactive\x1b[0m' :
+                      s.status === 'completed' ? '\x1b[33mcompleted\x1b[0m' : '\x1b[31mkilled\x1b[0m';
+        console.log(`${s.id.slice(-8)} | ${s.profile} | ${status} | ${s.startTime}`);
+      });
+    }
+    process.exit(0);
+  }
+
+  if (subCmd === 'end') {
+    const sessionId = args[2];
+    if (!sessionId) {
+      console.log('\x1b[31mUsage: cm session end <session-id>\x1b[0m');
+      process.exit(1);
+    }
+    const result = sessionManager.endSession(sessionId);
+    if (result) {
+      console.log(`\x1b[32m✓\x1b[0m Session ended: ${sessionId}`);
+    } else {
+      console.log(`\x1b[31m✗\x1b[0m Session not found: ${sessionId}`);
+    }
+    process.exit(0);
+  }
+
+  if (subCmd === 'kill') {
+    const sessionId = args[2];
+    if (!sessionId) {
+      console.log('\x1b[31mUsage: cm session kill <session-id>\x1b[0m');
+      process.exit(1);
+    }
+    const result = sessionManager.killSession(sessionId);
+    if (result) {
+      console.log(`\x1b[32m✓\x1b[0m Session killed: ${sessionId}`);
+    } else {
+      console.log(`\x1b[31m✗\x1b[0m Session not found: ${sessionId}`);
+    }
+    process.exit(0);
+  }
+
+  if (subCmd === 'clean') {
+    const days = safeParseInt(args[2], 7);
+    const cleaned = sessionManager.cleanSessions(days);
+    console.log(`\x1b[32m✓\x1b[0m Cleaned ${cleaned} old sessions`);
+    process.exit(0);
+  }
+
+  console.log('\x1b[31mUsage: cm session <list|end|kill|clean>\x1b[0m');
+  process.exit(1);
+}
+
+// Workflow management
+if (cmd === 'workflow') {
+  const subCmd = args[1];
+
+  if (subCmd === 'list') {
+    const workflows = workflowEngine.listWorkflows();
+    console.log(`\x1b[1m\x1b[36mWorkflows\x1b[0m (${workflows.length})`);
+    console.log(`─────────────────────────`);
+    if (workflows.length === 0) {
+      console.log('No workflows found');
+    } else {
+      workflows.forEach(w => {
+        console.log(`${w.id.slice(-8)} | ${w.name} | ${w.steps.length} steps`);
+      });
+    }
+    process.exit(0);
+  }
+
+  if (subCmd === 'create') {
+    console.log('\x1b[33mInteractive workflow creator coming soon!\x1b[0m');
+    console.log('For now, create workflows manually in ~/.claude/orchestrator/workflows/');
+    process.exit(0);
+  }
+
+  if (subCmd === 'run') {
+    const workflowId = args[2];
+    if (!workflowId) {
+      console.log('\x1b[31mUsage: cm workflow run <workflow-id>\x1b[0m');
+      process.exit(1);
+    }
+    console.log(`\x1b[36mExecuting workflow: ${workflowId}\x1b[0m`);
+    workflowEngine.executeWorkflow(workflowId).then(result => {
+      console.log(`\x1b[32m✓\x1b[0m Workflow ${result.status}`);
+      console.log(`Steps completed: ${result.steps.filter(s => s.success).length}/${result.steps.length}`);
+      process.exit(0);
+    }).catch(error => {
+      console.log(`\x1b[31m✗\x1b[0m ${error.message}`);
+      process.exit(1);
+    });
+  }
+
+  if (subCmd === 'delete') {
+    const workflowId = args[2];
+    if (!workflowId) {
+      console.log('\x1b[31mUsage: cm workflow delete <workflow-id>\x1b[0m');
+      process.exit(1);
+    }
+    const result = workflowEngine.deleteWorkflow(workflowId);
+    if (result) {
+      console.log(`\x1b[32m✓\x1b[0m Workflow deleted: ${workflowId}`);
+    } else {
+      console.log(`\x1b[31m✗\x1b[0m Workflow not found: ${workflowId}`);
+    }
+    process.exit(0);
+  }
+
+  console.log('\x1b[31mUsage: cm workflow <list|create|run|delete>\x1b[0m');
+  process.exit(1);
+}
+
+// Template management
+if (cmd === 'template') {
+  const subCmd = args[1];
+
+  if (subCmd === 'list' || !subCmd) {
+    const templates = templateManager.listTemplates();
+    console.log(`\x1b[1m\x1b[36mProject Templates\x1b[0m (${templates.length})`);
+    console.log(`─────────────────────────`);
+    templates.forEach(t => {
+      console.log(`\x1b[33m${t.name}\x1b[0m`);
+      console.log(`  ${t.description}`);
+      console.log();
+    });
+    process.exit(0);
+  }
+
+  if (subCmd === 'create') {
+    const templateName = args[2];
+    const projectName = args[3];
+    const targetDir = args[4] || process.cwd();
+
+    if (!templateName || !projectName) {
+      console.log('\x1b[31mUsage: cm template create <template-name> <project-name> [target-dir]\x1b[0m');
+      process.exit(1);
+    }
+
+    try {
+      const result = templateManager.createProject(templateName, projectName, targetDir);
+      console.log(`\x1b[32m✓\x1b[0m Project created: ${result.projectPath}`);
+      console.log(`Template: ${result.template}`);
+    } catch (error) {
+      console.log(`\x1b[31m✗\x1b[0m ${error.message}`);
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
+  console.log('\x1b[31mUsage: cm template <list|create>\x1b[0m');
+  process.exit(1);
+}
+
+// Task management
+if (cmd === 'task') {
+  const subCmd = args[1];
+
+  if (subCmd === 'list') {
+    const tasks = taskQueue.listTasks();
+    console.log(`\x1b[1m\x1b[36mTasks\x1b[0m (${tasks.length})`);
+    console.log(`─────────────────────────`);
+    if (tasks.length === 0) {
+      console.log('No tasks found');
+    } else {
+      tasks.forEach(t => {
+        const status = t.status === 'queued' ? '\x1b[33mqueued\x1b[0m' :
+                      t.status === 'running' ? '\x1b[36mrunning\x1b[0m' :
+                      t.status === 'completed' ? '\x1b[32mcompleted\x1b[0m' : '\x1b[31mfailed\x1b[0m';
+        console.log(`${t.id.slice(-8)} | ${t.command.slice(0, 40)} | ${status}`);
+      });
+    }
+    process.exit(0);
+  }
+
+  if (subCmd === 'add') {
+    const command = args.slice(2).join(' ');
+    if (!command) {
+      console.log('\x1b[31mUsage: cm task add <command>\x1b[0m');
+      process.exit(1);
+    }
+    const task = taskQueue.addTask({ command });
+    console.log(`\x1b[32m✓\x1b[0m Task added: ${task.id}`);
+    process.exit(0);
+  }
+
+  if (subCmd === 'run') {
+    const taskId = args[2];
+    if (!taskId) {
+      console.log('\x1b[31mUsage: cm task run <task-id>\x1b[0m');
+      process.exit(1);
+    }
+    console.log(`\x1b[36mRunning task: ${taskId}\x1b[0m`);
+    taskQueue.executeTask(taskId).then(result => {
+      console.log(`\x1b[32m✓\x1b[0m Task completed`);
+      if (result.output) console.log(result.output);
+      process.exit(0);
+    }).catch(error => {
+      console.log(`\x1b[31m✗\x1b[0m ${error.message}`);
+      process.exit(1);
+    });
+  }
+
+  if (subCmd === 'queue') {
+    const concurrency = safeParseInt(args[2], 1);
+    console.log(`\x1b[36mProcessing task queue (concurrency: ${concurrency})\x1b[0m`);
+    taskQueue.processQueue(concurrency).then(results => {
+      const successful = results.filter(r => r.status === 'fulfilled').length;
+      console.log(`\x1b[32m✓\x1b[0m Processed ${results.length} tasks (${successful} successful)`);
+      process.exit(0);
+    }).catch(error => {
+      console.log(`\x1b[31m✗\x1b[0m ${error.message}`);
+      process.exit(1);
+    });
+  }
+
+  console.log('\x1b[31mUsage: cm task <list|add|run|queue>\x1b[0m');
+  process.exit(1);
+}
+
+// Hook management
+if (cmd === 'hook') {
+  const subCmd = args[1];
+
+  if (subCmd === 'list' || !subCmd) {
+    const hooks = hooksManager.listHooks();
+    console.log(`\x1b[1m\x1b[36mHooks\x1b[0m (${hooks.length})`);
+    console.log(`─────────────────────────`);
+    if (hooks.length === 0) {
+      console.log('No hooks found');
+    } else {
+      hooks.forEach(h => console.log(`  - ${h}`));
+    }
+    process.exit(0);
+  }
+
+  if (subCmd === 'add') {
+    const event = args[2];
+    const scriptPath = args[3];
+    if (!event || !scriptPath) {
+      console.log('\x1b[31mUsage: cm hook add <event> <script-path>\x1b[0m');
+      process.exit(1);
+    }
+    if (!fs.existsSync(scriptPath)) {
+      console.log(`\x1b[31m✗\x1b[0m Script not found: ${scriptPath}`);
+      process.exit(1);
+    }
+    const script = fs.readFileSync(scriptPath, 'utf8');
+    hooksManager.registerHook(event, script);
+    console.log(`\x1b[32m✓\x1b[0m Hook added: ${event}`);
+    process.exit(0);
+  }
+
+  if (subCmd === 'remove') {
+    const event = args[2];
+    if (!event) {
+      console.log('\x1b[31mUsage: cm hook remove <event>\x1b[0m');
+      process.exit(1);
+    }
+    const result = hooksManager.deleteHook(event);
+    if (result) {
+      console.log(`\x1b[32m✓\x1b[0m Hook removed: ${event}`);
+    } else {
+      console.log(`\x1b[31m✗\x1b[0m Hook not found: ${event}`);
+    }
+    process.exit(0);
+  }
+
+  console.log('\x1b[31mUsage: cm hook <list|add|remove>\x1b[0m');
+  process.exit(1);
+}
+
+// Statistics
+if (cmd === 'stats') {
+  const stats = analytics.getStats();
+  console.log(`\x1b[1m\x1b[36mOrchestration Statistics\x1b[0m`);
+  console.log(`─────────────────────────`);
+  console.log(`\n\x1b[33mSessions:\x1b[0m`);
+  console.log(`  Total: ${stats.sessions.total}`);
+  console.log(`  Active: ${stats.sessions.active}`);
+  console.log(`  Completed: ${stats.sessions.completed}`);
+  console.log(`\n\x1b[33mWorkflows:\x1b[0m`);
+  console.log(`  Total: ${stats.workflows.total}`);
+  console.log(`  Executed: ${stats.workflows.executed}`);
+  console.log(`\n\x1b[33mTasks:\x1b[0m`);
+  console.log(`  Total: ${stats.tasks.total}`);
+  console.log(`  Queued: ${stats.tasks.queued}`);
+  console.log(`  Running: ${stats.tasks.running}`);
+  console.log(`  Completed: ${stats.tasks.completed}`);
+  console.log(`  Failed: ${stats.tasks.failed}`);
+  process.exit(0);
+}
+
+// Batch operations
+if (cmd === 'batch') {
+  const command = args.slice(1).join(' ');
+  if (!command) {
+    console.log('\x1b[31mUsage: cm batch <command>\x1b[0m');
+    console.log('Example: cm batch "claude --version"');
+    process.exit(1);
+  }
+
+  const profiles = loadProfiles();
+  console.log(`\x1b[36mRunning command across ${profiles.length} profiles:\x1b[0m ${command}\n`);
+
+  let successful = 0;
+  let failed = 0;
+
+  profiles.forEach(profile => {
+    console.log(`\x1b[33m[${profile.label}]\x1b[0m`);
+    try {
+      applyProfile(profile.value);
+      const result = execSync(command, { encoding: 'utf8', stdio: 'pipe' });
+      console.log(result);
+      successful++;
+    } catch (error) {
+      console.log(`\x1b[31m✗ Error: ${error.message}\x1b[0m`);
+      failed++;
+    }
+    console.log();
+  });
+
+  console.log(`\x1b[32m✓\x1b[0m Batch complete: ${successful} successful, ${failed} failed`);
+  process.exit(0);
+}
+
+// ============= END ORCHESTRATION COMMANDS =============
 
 if (cmd === 'list') {
   const profiles = loadProfiles();

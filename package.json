@@ -1,7 +1,7 @@
 {
   "name": "claude-manager",
-  "version": "1.5.4",
-  "description": "Terminal app for managing Claude Code settings, profiles, MCP servers, and skills",
+  "version": "2.0.0",
+  "description": "Full orchestration tool for Claude Code development - manage profiles, automate workflows, track sessions, and accelerate AI development",
   "type": "module",
   "bin": {
     "cm": "./dist/cli.js",
@@ -21,7 +21,14 @@
     "ai",
     "cli",
     "mcp",
-    "profile-manager"
+    "profile-manager",
+    "orchestration",
+    "workflow",
+    "automation",
+    "session-management",
+    "task-queue",
+    "development-tools",
+    "ai-development"
   ],
   "author": "Faisal Nazir",
   "license": "MIT",
