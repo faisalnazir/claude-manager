@@ -38,11 +38,9 @@ import {
   createDefaultSettings,
   buildProfileData,
   sanitizeProfileName,
-  sanitizeFilePath,
   safeParseInt,
   logError,
 } from './utils.js';
-
 // Ensure profiles directory exists
 ensureProfilesDir();
 
@@ -1360,28 +1358,10 @@ if (cmd === 'skills') {
       }
     });
 
-    const groupedItems = [];
-    const groups = [...new Set(filteredProfiles.map(p => p.group).filter(Boolean))];
-
-    if (groups.length > 0) {
-      groups.forEach(g => {
-        groupedItems.push({ label: `── ${g} ──`, value: `group-${g}`, key: `group-${g}`, disabled: true });
-        filteredProfiles.filter(p => p.group === g).forEach((p, i) => {
-          groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` });
-        });
-      });
-      const ungrouped = filteredProfiles.filter(p => !p.group);
-      if (ungrouped.length > 0) {
-        groupedItems.push({ label: '── Other ──', value: 'group-other', key: 'group-other', disabled: true });
-        ungrouped.forEach((p, i) => groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` }));
-      }
-    } else {
-      filteredProfiles.forEach((p, i) => groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` }));
-    }
-
     if (step === 'loading') {
       return <LoadingScreen message="Initializing Claude Manager" />;
     }
+
 
     if (step === 'parallel') {
       return <ParallelSelector profiles={profiles} dangerMode={dangerMode} />;
@@ -1421,13 +1401,6 @@ if (cmd === 'skills') {
         </Box>
       );
     }
-
-    const handleSelect = (item) => {
-      if (item.disabled) return;
-      applyProfile(item.value);
-      console.log(`\n\x1b[32m✓\x1b[0m Applied: ${item.label.replace(/^\d+\.\s*/, '')}\n`);
-      launchClaude(dangerMode);
-    };
 
     // Get current profile info
     const lastProfile = getLastProfile();

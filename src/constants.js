@@ -35,6 +35,7 @@ export const PROVIDERS = [
   { label: 'Amazon Bedrock', value: 'bedrock', url: '', needsKey: false },
   { label: 'Z.AI', value: 'zai', url: 'https://api.z.ai/api/anthropic', needsKey: true },
   { label: 'MiniMax', value: 'minimax', url: 'https://api.minimax.io/anthropic', needsKey: true },
+  { label: 'Kimi for Coding', value: 'kimi', url: 'https://api.kimi.com/coding/', needsKey: true },
   { label: 'Custom', value: 'custom', url: '', needsKey: true },
 ];
 
@@ -48,7 +49,6 @@ export const GIT_CLEANUP_TIMEOUT = 5000;
 
 // Pagination
 export const MCP_PAGE_SIZE = 50;
-export const MCP_FETCH_LIMIT = 200;
 export const SKILLS_PAGE_SIZE = 50;
 
 // Default settings

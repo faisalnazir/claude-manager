@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { execSync } from 'child_process';
 import { createInterface } from 'readline';
 import {
@@ -11,6 +10,7 @@ import {
   SKILLS_DIR,
   MCP_REGISTRY_URL,
   SKILL_SOURCES,
+  MCP_PAGE_SIZE,
   FETCH_TIMEOUT,
   NPM_OUTDATED_TIMEOUT,
   GIT_CLONE_TIMEOUT,
@@ -47,7 +47,7 @@ export const sanitizeProfileName = (name) => {
 };
 
 // Sanitize file path to prevent directory traversal
-export const sanitizeFilePath = (filename, baseDir) => {
+const sanitizeFilePath = (filename, baseDir) => {
   const sanitized = path.basename(filename);
   const resolved = path.resolve(baseDir, sanitized);
   if (!resolved.startsWith(baseDir)) {
@@ -94,7 +94,7 @@ export const applyProfile = (filename) => {
   }
 
   const profile = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
-  const { name, group, mcpServers, ...settings } = profile;
+  const { name, mcpServers, ...settings } = profile;
 
   // Write settings.json
   fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
@@ -168,19 +168,21 @@ export const validateProfile = (profile) => {
     const key = profile.env.ANTHROPIC_AUTH_TOKEN;
     const baseUrl = profile.env?.ANTHROPIC_BASE_URL || '';
     const isMiniMax = baseUrl.includes('minimax.io') || baseUrl.includes('minimaxi.com');
-    
+    const isKimi = baseUrl.includes('moonshot.cn') || baseUrl.includes('kimi.com');
+
     if (isMiniMax) {
       // MiniMax supports both regular keys (sk-ant-) and coding plan keys (sk-cp-)
       if (!key.startsWith('sk-ant-') && !key.startsWith('sk-cp-')) {
         errors.push('MiniMax API key should start with "sk-ant-" or "sk-cp-" (for coding plans)');
       }
-    } else {
-      // Standard Anthropic validation
+    } else if (!isKimi) {
+      // Standard Anthropic validation (sk-ant-)
       if (!key.startsWith('sk-ant-')) {
         errors.push('API key should start with "sk-ant-"');
       }
     }
-    
+    // Kimi accepts any sk- prefix key
+
     if (key.length < 20) {
       errors.push('API key appears too short');
     }
@@ -189,15 +191,27 @@ export const validateProfile = (profile) => {
   // Validate model format if present
   if (profile.env?.ANTHROPIC_MODEL) {
     const model = profile.env.ANTHROPIC_MODEL;
-    const validPatterns = [
-      /^claude-\d+(\.\d+)?(-\d+)?$/,
-      /^glm-/,
-      /^minimax-/,
-      /^MiniMax-M\d+(\.\d+)?$/,
-      /^anthropic\.claude-/
-    ];
-    if (!validPatterns.some(p => p.test(model))) {
-      errors.push(`Model format looks invalid: ${model}`);
+    const baseUrl = profile.env?.ANTHROPIC_BASE_URL || '';
+    const isKimi = baseUrl.includes('moonshot.cn') || baseUrl.includes('kimi.com');
+
+    // Kimi accepts various model IDs, be more permissive
+    if (isKimi) {
+      // Accept common Kimi patterns and any sk- related model
+      const kimiPatterns = [/^moonshot-v1/, /^kimi-k2/, /^kimi-/, /^kimi-for-coding/, /^abab/, /^sk-/];
+      if (!kimiPatterns.some(p => p.test(model)) && model.length < 3) {
+        errors.push(`Model format looks invalid for Kimi: ${model}`);
+      }
+    } else {
+      const validPatterns = [
+        /^claude-\d+(\.\d+)?(-\d+)?$/,
+        /^glm-/,
+        /^minimax-/,
+        /^MiniMax-M\d+(\.\d+)?$/,
+        /^anthropic\.claude-/
+      ];
+      if (!validPatterns.some(p => p.test(model))) {
+        errors.push(`Model format looks invalid: ${model}`);
+      }
     }
   }
 
@@ -320,7 +334,6 @@ export const searchMcpServers = async (query, offset = 0) => {
       return isLatest && matchesQuery;
     });
 
-    const MCP_PAGE_SIZE = 50;
     return {
       servers: filtered.slice(offset, offset + MCP_PAGE_SIZE),
       total: filtered.length,
@@ -431,10 +444,7 @@ export const addSkillToClaudeJson = (skillName, skillUrl) => {
     const match = skillUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
     if (!match) return { success: false, message: 'Invalid skill URL' };
 
-    const [, owner, repo, branch, skillSubPath] = match;
-    const tempDir = `/tmp/skill-clone-${Date.now()}`;
-
-    // Sanitize temp dir name
+    const [, owner, repo, , skillSubPath] = match;
     const sanitizedTempDir = sanitizeFilePath(`skill-clone-${Date.now()}`, '/tmp');
     const finalTempDir = path.join('/tmp', sanitizedTempDir || 'skill-clone');
 

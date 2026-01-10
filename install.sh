@@ -63,7 +63,6 @@ mkdir -p "$CM_DIR"
 
 echo "Downloading cm..."
 curl -fsSL https://raw.githubusercontent.com/faisalnazir/claude-manager/main/src/cli.js -o "$CM_DIR/cli.js"
-curl -fsSL https://raw.githubusercontent.com/faisalnazir/claude-manager/main/src/config.js -o "$CM_DIR/config.js"
 curl -fsSL https://raw.githubusercontent.com/faisalnazir/claude-manager/main/package.json -o "$CM_DIR/package.json"
 
 echo "Installing dependencies..."
