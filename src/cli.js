@@ -599,6 +599,98 @@ const SkillsBrowser = () => {
   );
 };
 
+const NewProfileWizard = () => {
+  const { exit } = useApp();
+  const [step, setStep] = useState('name');
+  const [name, setName] = useState('');
+  const [provider, setProvider] = useState('');
+  const [apiKey, setApiKey] = useState('');
+  const [model, setModel] = useState('');
+  const [group, setGroup] = useState('');
+  const [validationErrors, setValidationErrors] = useState([]);
+
+  const handleSave = () => {
+    const profile = buildProfileData(name, provider, apiKey, model, group, PROVIDERS);
+
+    const validation = validateProfile(profile);
+    if (!validation.valid) {
+      setStep('error');
+      setValidationErrors(validation.errors);
+      return;
+    }
+
+    const filename = sanitizeProfileName(name) + '.json';
+    fs.writeFileSync(path.join(PROFILES_DIR, filename), JSON.stringify(profile, null, 2));
+    console.log(`\n\x1b[32m✓\x1b[0m Created: ${name}`);
+    exit();
+  };
+
+  const handleProviderSelect = (item) => {
+    setProvider(item.value);
+    const prov = PROVIDERS.find(p => p.value === item.value);
+    setStep(prov.needsKey ? 'apikey' : 'model');
+  };
+
+  useInput((input, key) => {
+    if (step === 'error') {
+      setStep('group');
+      setValidationErrors([]);
+    }
+  });
+
+  return (
+    <Box flexDirection="column" padding={1}>
+      <Text bold color="cyan">New Profile</Text>
+      <Text dimColor>─────────────────────────</Text>
+
+      {step === 'name' && (
+        <Box marginTop={1}>
+          <Text>Name: </Text>
+          <TextInput value={name} onChange={setName} onSubmit={() => setStep('provider')} />
+        </Box>
+      )}
+
+      {step === 'provider' && (
+        <Box flexDirection="column" marginTop={1}>
+          <Text>Provider:</Text>
+          <SelectInput items={PROVIDERS} onSelect={handleProviderSelect} />
+        </Box>
+      )}
+
+      {step === 'apikey' && (
+        <Box marginTop={1}>
+          <Text>API Key: </Text>
+          <TextInput value={apiKey} onChange={setApiKey} onSubmit={() => setStep('model')} mask="*" />
+        </Box>
+      )}
+
+      {step === 'model' && (
+        <Box marginTop={1}>
+          <Text>Model ID (optional): </Text>
+          <TextInput value={model} onChange={setModel} onSubmit={() => setStep('group')} />
+        </Box>
+      )}
+
+      {step === 'group' && (
+        <Box marginTop={1}>
+          <Text>Group (optional): </Text>
+          <TextInput value={group} onChange={setGroup} onSubmit={handleSave} />
+        </Box>
+      )}
+
+      {step === 'error' && (
+        <Box marginTop={1} flexDirection="column">
+          <Text color="red">Validation errors:</Text>
+          {validationErrors.map((err, i) => (
+            <Text key={i} color="yellow">  • {err}</Text>
+          ))}
+          <Text marginTop={1}>Press any key to go back and fix...</Text>
+        </Box>
+      )}
+    </Box>
+  );
+};
+
 if (cmd === 'skills') {
   const subCommand = args[1];
 
@@ -712,97 +804,6 @@ if (cmd === 'skills') {
 
   render(<McpSearch />);
 } else if (cmd === 'new') {
-  const NewProfileWizard = () => {
-    const { exit } = useApp();
-    const [step, setStep] = useState('name');
-    const [name, setName] = useState('');
-    const [provider, setProvider] = useState('');
-    const [apiKey, setApiKey] = useState('');
-    const [model, setModel] = useState('');
-    const [group, setGroup] = useState('');
-    const [validationErrors, setValidationErrors] = useState([]);
-
-    const handleSave = () => {
-      const profile = buildProfileData(name, provider, apiKey, model, group, PROVIDERS);
-
-      const validation = validateProfile(profile);
-      if (!validation.valid) {
-        setStep('error');
-        setValidationErrors(validation.errors);
-        return;
-      }
-
-      const filename = sanitizeProfileName(name) + '.json';
-      fs.writeFileSync(path.join(PROFILES_DIR, filename), JSON.stringify(profile, null, 2));
-      console.log(`\n\x1b[32m✓\x1b[0m Created: ${name}`);
-      exit();
-    };
-
-    const handleProviderSelect = (item) => {
-      setProvider(item.value);
-      const prov = PROVIDERS.find(p => p.value === item.value);
-      setStep(prov.needsKey ? 'apikey' : 'model');
-    };
-
-    useInput((input, key) => {
-      if (step === 'error') {
-        setStep('group');
-        setValidationErrors([]);
-      }
-    });
-
-    return (
-      <Box flexDirection="column" padding={1}>
-        <Text bold color="cyan">New Profile</Text>
-        <Text dimColor>─────────────────────────</Text>
-
-        {step === 'name' && (
-          <Box marginTop={1}>
-            <Text>Name: </Text>
-            <TextInput value={name} onChange={setName} onSubmit={() => setStep('provider')} />
-          </Box>
-        )}
-
-        {step === 'provider' && (
-          <Box flexDirection="column" marginTop={1}>
-            <Text>Provider:</Text>
-            <SelectInput items={PROVIDERS} onSelect={handleProviderSelect} />
-          </Box>
-        )}
-
-        {step === 'apikey' && (
-          <Box marginTop={1}>
-            <Text>API Key: </Text>
-            <TextInput value={apiKey} onChange={setApiKey} onSubmit={() => setStep('model')} mask="*" />
-          </Box>
-        )}
-
-        {step === 'model' && (
-          <Box marginTop={1}>
-            <Text>Model ID (optional): </Text>
-            <TextInput value={model} onChange={setModel} onSubmit={() => setStep('group')} />
-          </Box>
-        )}
-
-        {step === 'group' && (
-          <Box marginTop={1}>
-            <Text>Group (optional): </Text>
-            <TextInput value={group} onChange={setGroup} onSubmit={handleSave} />
-          </Box>
-        )}
-
-        {step === 'error' && (
-          <Box marginTop={1} flexDirection="column">
-            <Text color="red">Validation errors:</Text>
-            {validationErrors.map((err, i) => (
-              <Text key={i} color="yellow">  • {err}</Text>
-            ))}
-            <Text marginTop={1}>Press any key to go back and fix...</Text>
-          </Box>
-        )}
-      </Box>
-    );
-  };
   render(<NewProfileWizard />);
 } else {
   const LoadingScreen = ({ message = 'Loading...' }) => {
