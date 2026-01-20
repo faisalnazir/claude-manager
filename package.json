@@ -1,6 +1,6 @@
 {
   "name": "claude-manager",
-  "version": "1.5.5",
+  "version": "1.6.0",
   "description": "Terminal app for managing Claude Code settings, profiles, MCP servers, and skills",
   "type": "module",
   "bin": {
@@ -9,7 +9,12 @@
   },
   "scripts": {
     "build": "esbuild src/cli.js --platform=node --format=esm --loader:.js=jsx --bundle --outfile=dist/cli.js --packages=external && echo '#!/usr/bin/env node' | cat - dist/cli.js > dist/tmp && mv dist/tmp dist/cli.js && chmod +x dist/cli.js",
-    "prepublishOnly": "npm run build"
+    "prepublishOnly": "npm run build",
+    "test": "vitest",
+    "test:coverage": "vitest --coverage",
+    "test:run": "vitest run",
+    "lint": "eslint src/",
+    "lint:fix": "eslint src/ --fix"
   },
   "files": [
     "dist"
@@ -41,6 +46,10 @@
     "react": "^18.3.1"
   },
   "devDependencies": {
-    "esbuild": "^0.24.2"
+    "@vitest/coverage-v8": "^2.1.8",
+    "esbuild": "^0.24.2",
+    "eslint": "^9.18.0",
+    "eslint-plugin-jsdoc": "^50.6.1",
+    "vitest": "^2.1.8"
   }
 }

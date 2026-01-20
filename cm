@@ -1,0 +1,1460 @@
+#!/usr/bin/env node
+// src/cli.js
+import React, { useState, useEffect, useMemo } from "react";
+import { render, Box, Text, useInput, useApp } from "ink";
+import SelectInput from "ink-select-input";
+import TextInput from "ink-text-input";
+import { spawnSync, execSync as execSync2, spawn } from "child_process";
+import fs2 from "fs";
+import path3 from "path";
+import Fuse from "fuse.js";
+
+// src/constants.js
+import os from "os";
+import path from "path";
+var VERSION = "1.5.5";
+var LOGO = `\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2557      \u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2557   \u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2557 \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557
+\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D\u2588\u2588\u2551     \u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2557\u2588\u2588\u2554\u2550\u2550\u2550\u2550\u255D
+\u2588\u2588\u2551     \u2588\u2588\u2551     \u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2588\u2588\u2588\u2557
+\u2588\u2588\u2551     \u2588\u2588\u2551     \u2588\u2588\u2554\u2550\u2550\u2588\u2588\u2551\u2588\u2588\u2551   \u2588\u2588\u2551\u2588\u2588\u2551  \u2588\u2588\u2551\u2588\u2588\u2554\u2550\u2550\u255D
+\u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557\u2588\u2588\u2551  \u2588\u2588\u2551\u255A\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2588\u2588\u2588\u2588\u2554\u255D\u2588\u2588\u2588\u2588\u2588\u2588\u2588\u2557
+ \u255A\u2550\u2550\u2550\u2550\u2550\u255D\u255A\u2550\u2550\u2550\u2550\u2550\u2550\u255D\u255A\u2550\u255D  \u255A\u2550\u255D \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u2550\u2550\u2550\u2550\u255D \u255A\u2550\u2550\u2550\u2550\u2550\u2550\u255D`;
+var PROFILES_DIR = path.join(os.homedir(), ".claude", "profiles");
+var SETTINGS_PATH = path.join(os.homedir(), ".claude", "settings.json");
+var CLAUDE_JSON_PATH = path.join(os.homedir(), ".claude.json");
+var LAST_PROFILE_PATH = path.join(os.homedir(), ".claude", ".last-profile");
+var SKILLS_DIR = path.join(os.homedir(), ".claude", "skills");
+var MCP_REGISTRY_URL = "https://registry.modelcontextprotocol.io/v0/servers";
+var SKILL_SOURCES = [
+  { url: "https://api.github.com/repos/anthropics/skills/contents/skills", base: "https://github.com/anthropics/skills/tree/main/skills" },
+  { url: "https://api.github.com/repos/Prat011/awesome-llm-skills/contents/skills", base: "https://github.com/Prat011/awesome-llm-skills/tree/main/skills" },
+  { url: "https://api.github.com/repos/skillcreatorai/Ai-Agent-Skills/contents/skills", base: "https://github.com/skillcreatorai/Ai-Agent-Skills/tree/main/skills" }
+];
+var PROVIDERS = [
+  { label: "Anthropic (Direct)", value: "anthropic", url: "", needsKey: true },
+  { label: "Amazon Bedrock", value: "bedrock", url: "", needsKey: false },
+  { label: "Z.AI", value: "zai", url: "https://api.z.ai/api/anthropic", needsKey: true },
+  { label: "MiniMax", value: "minimax", url: "https://api.minimax.io/anthropic", needsKey: true },
+  { label: "Custom", value: "custom", url: "", needsKey: true }
+];
+var FETCH_TIMEOUT = 1e4;
+var NPM_OUTDATED_TIMEOUT = 5e3;
+var GIT_CLONE_TIMEOUT = 3e4;
+var GIT_SPARSE_TIMEOUT = 1e4;
+var GIT_MOVE_TIMEOUT = 5e3;
+var GIT_CLEANUP_TIMEOUT = 5e3;
+var MCP_PAGE_SIZE = 50;
+var SKILLS_PAGE_SIZE = 50;
+var DEFAULT_SETTINGS = {
+  env: {},
+  model: "opus",
+  alwaysThinkingEnabled: true,
+  defaultMode: "bypassPermissions"
+};
+var API_TIMEOUT_MS = "3000000";
+var FUSE_THRESHOLD = 0.3;
+
+// src/utils.js
+import fs from "fs";
+import path2 from "path";
+import { execSync } from "child_process";
+import { createInterface } from "readline";
+var ensureProfilesDir = () => {
+  if (!fs.existsSync(PROFILES_DIR)) {
+    fs.mkdirSync(PROFILES_DIR, { recursive: true });
+  }
+};
+var logError = (context, error) => {
+  if (process.env.DEBUG || process.env.CM_DEBUG) {
+    console.error(`[${context}]`, error?.message || error);
+  }
+};
+var safeParseInt = (value, defaultValue = null) => {
+  const parsed = parseInt(value, 10);
+  return Number.isNaN(parsed) ? defaultValue : parsed;
+};
+var sanitizeProfileName = (name) => {
+  return name.toLowerCase().replace(/[^a-z0-9-_]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+};
+var sanitizeFilePath = (filename, baseDir) => {
+  const sanitized = path2.basename(filename);
+  const resolved = path2.resolve(baseDir, sanitized);
+  if (!resolved.startsWith(baseDir)) {
+    return null;
+  }
+  return sanitized;
+};
+var loadProfiles = () => {
+  const profiles = [];
+  ensureProfilesDir();
+  if (!fs.existsSync(PROFILES_DIR)) {
+    return profiles;
+  }
+  const files = fs.readdirSync(PROFILES_DIR).sort();
+  for (const file of files) {
+    if (!file.endsWith(".json")) continue;
+    const filePath = path2.join(PROFILES_DIR, file);
+    try {
+      const content = JSON.parse(fs.readFileSync(filePath, "utf8"));
+      profiles.push({
+        label: content.name || file.replace(".json", ""),
+        value: file,
+        key: file,
+        group: content.group || null,
+        data: content
+      });
+    } catch (error) {
+      logError("loadProfiles", error);
+    }
+  }
+  return profiles;
+};
+var applyProfile = (filename) => {
+  const profilePath = path2.join(PROFILES_DIR, filename);
+  if (!fs.existsSync(profilePath)) {
+    throw new Error(`Profile not found: ${filename}`);
+  }
+  const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+  const { name, group, mcpServers, ...settings } = profile;
+  fs.writeFileSync(SETTINGS_PATH, JSON.stringify(settings, null, 2));
+  if (mcpServers !== void 0) {
+    try {
+      const claudeJson = fs.existsSync(CLAUDE_JSON_PATH) ? JSON.parse(fs.readFileSync(CLAUDE_JSON_PATH, "utf8")) : {};
+      claudeJson.mcpServers = mcpServers;
+      fs.writeFileSync(CLAUDE_JSON_PATH, JSON.stringify(claudeJson, null, 2));
+    } catch (error) {
+      logError("applyProfile-mcp", error);
+    }
+  }
+  fs.writeFileSync(LAST_PROFILE_PATH, filename);
+  return name || filename;
+};
+var getLastProfile = () => {
+  try {
+    const content = fs.readFileSync(LAST_PROFILE_PATH, "utf8");
+    return content.trim() || null;
+  } catch (error) {
+    return null;
+  }
+};
+var checkProjectProfile = () => {
+  const localProfile = path2.join(process.cwd(), ".claude-profile");
+  if (fs.existsSync(localProfile)) {
+    try {
+      return fs.readFileSync(localProfile, "utf8").trim();
+    } catch (error) {
+      logError("checkProjectProfile", error);
+    }
+  }
+  return null;
+};
+var confirm = async (message) => {
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise((resolve) => {
+    rl.question(`${message} (y/N): `, (answer) => {
+      rl.close();
+      const normalized = answer.toLowerCase().trim();
+      resolve(normalized === "y" || normalized === "yes");
+    });
+  });
+};
+var validateProfile = (profile) => {
+  const errors = [];
+  if (!profile.name || profile.name.trim().length === 0) {
+    errors.push("Profile name is required");
+  }
+  if (profile.env?.ANTHROPIC_AUTH_TOKEN) {
+    const key = profile.env.ANTHROPIC_AUTH_TOKEN;
+    const baseUrl = profile.env?.ANTHROPIC_BASE_URL || "";
+    const isMiniMax = baseUrl.includes("minimax.io") || baseUrl.includes("minimaxi.com");
+    if (isMiniMax) {
+      if (!key.startsWith("sk-ant-") && !key.startsWith("sk-cp-")) {
+        errors.push('MiniMax API key should start with "sk-ant-" or "sk-cp-" (for coding plans)');
+      }
+    } else {
+      if (!key.startsWith("sk-ant-")) {
+        errors.push('API key should start with "sk-ant-"');
+      }
+    }
+    if (key.length < 20) {
+      errors.push("API key appears too short");
+    }
+  }
+  if (profile.env?.ANTHROPIC_MODEL) {
+    const model = profile.env.ANTHROPIC_MODEL;
+    const validPatterns = [
+      /^claude-\d+(\.\d+)?(-\d+)?$/,
+      /^glm-/,
+      /^minimax-/,
+      /^MiniMax-M\d+(\.\d+)?$/,
+      /^anthropic\.claude-/
+    ];
+    if (!validPatterns.some((p) => p.test(model))) {
+      errors.push(`Model format looks invalid: ${model}`);
+    }
+  }
+  if (profile.env?.ANTHROPIC_BASE_URL) {
+    try {
+      new URL(profile.env.ANTHROPIC_BASE_URL);
+    } catch {
+      errors.push("Base URL is not a valid URL");
+    }
+  }
+  return { valid: errors.length === 0, errors };
+};
+var getInstalledSkills = () => {
+  if (!fs.existsSync(SKILLS_DIR)) return [];
+  try {
+    return fs.readdirSync(SKILLS_DIR).filter((f) => {
+      const p = path2.join(SKILLS_DIR, f);
+      try {
+        return fs.statSync(p).isDirectory() && !f.startsWith(".");
+      } catch {
+        return false;
+      }
+    });
+  } catch (error) {
+    logError("getInstalledSkills", error);
+    return [];
+  }
+};
+var removeSkill = (skillName) => {
+  const skillPath = path2.join(SKILLS_DIR, skillName);
+  if (!fs.existsSync(skillPath)) {
+    return { success: false, message: "Skill not found" };
+  }
+  try {
+    fs.rmSync(skillPath, { recursive: true, force: true });
+    return { success: true };
+  } catch (error) {
+    logError("removeSkill", error);
+    return { success: false, message: "Failed to remove skill" };
+  }
+};
+var checkForUpdate = async (skipUpdate2) => {
+  if (skipUpdate2) return { needsUpdate: false };
+  const { exec } = await import("child_process");
+  const { promisify } = await import("util");
+  const execAsync = promisify(exec);
+  try {
+    const versionResult = await execAsync("claude --version 2>/dev/null").catch(() => ({ stdout: "" }));
+    const current = versionResult.stdout.match(/(\d+\.\d+\.\d+)/)?.[1];
+    if (!current) return { needsUpdate: false };
+    let needsUpdate = false;
+    if (process.platform === "darwin") {
+      const outdatedResult = await execAsync("brew outdated claude-code 2>&1 || true").catch(() => ({ stdout: "" }));
+      needsUpdate = outdatedResult.stdout.includes("claude-code");
+    }
+    if (!needsUpdate) {
+      const npmListResult = await execAsync("npm list -g @anthropic-ai/claude-code 2>/dev/null").catch(() => ({ stdout: "" }));
+      if (npmListResult.stdout.includes("@anthropic-ai/claude-code")) {
+        try {
+          const npmOutdated = await execAsync("npm outdated -g @anthropic-ai/claude-code --json 2>/dev/null || true", { timeout: NPM_OUTDATED_TIMEOUT });
+          needsUpdate = npmOutdated.stdout.length > 0;
+        } catch {
+          needsUpdate = true;
+        }
+      }
+    }
+    return { current, needsUpdate };
+  } catch (error) {
+    logError("checkForUpdate", error);
+    return { needsUpdate: false };
+  }
+};
+var launchClaude = (dangerMode2) => {
+  try {
+    const claudeArgs = dangerMode2 ? "--dangerously-skip-permissions" : "";
+    execSync(`claude ${claudeArgs}`, { stdio: "inherit" });
+  } catch (e) {
+    process.exit(e.status || 1);
+  }
+  process.exit(0);
+};
+var searchMcpServers = async (query, offset = 0) => {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  try {
+    const res = await fetch(`${MCP_REGISTRY_URL}?limit=200`, { signal: controller.signal });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const seen = /* @__PURE__ */ new Set();
+    const filtered = data.servers.filter((s) => {
+      if (seen.has(s.server.name)) return false;
+      seen.add(s.server.name);
+      const isLatest = s._meta?.["io.modelcontextprotocol.registry/official"]?.isLatest !== false;
+      const matchesQuery = !query || s.server.name.toLowerCase().includes(query.toLowerCase()) || s.server.description?.toLowerCase().includes(query.toLowerCase());
+      return isLatest && matchesQuery;
+    });
+    const MCP_PAGE_SIZE2 = 50;
+    return {
+      servers: filtered.slice(offset, offset + MCP_PAGE_SIZE2),
+      total: filtered.length,
+      hasMore: offset + MCP_PAGE_SIZE2 < filtered.length,
+      offset
+    };
+  } catch (error) {
+    logError("searchMcpServers", error);
+    return { servers: [], total: 0, hasMore: false, offset: 0 };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+var addMcpToProfile = (server, profileFile) => {
+  const sanitizedFile = sanitizeFilePath(profileFile, PROFILES_DIR);
+  if (!sanitizedFile) {
+    throw new Error("Invalid profile file");
+  }
+  const profilePath = path2.join(PROFILES_DIR, sanitizedFile);
+  const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
+  if (!profile.mcpServers) profile.mcpServers = {};
+  const s = server.server;
+  const name = s.name.split("/").pop();
+  if (s.remotes?.[0]) {
+    const remote = s.remotes[0];
+    profile.mcpServers[name] = {
+      type: remote.type === "streamable-http" ? "http" : remote.type,
+      url: remote.url
+    };
+  } else if (s.packages?.[0]) {
+    const pkg = s.packages[0];
+    if (pkg.registryType === "npm") {
+      profile.mcpServers[name] = {
+        type: "stdio",
+        command: "npx",
+        args: ["-y", pkg.identifier]
+      };
+    } else if (pkg.registryType === "pypi") {
+      profile.mcpServers[name] = {
+        type: "stdio",
+        command: "uvx",
+        args: [pkg.identifier]
+      };
+    }
+  }
+  fs.writeFileSync(profilePath, JSON.stringify(profile, null, 2));
+  return name;
+};
+var fetchSkills = async () => {
+  const seen = /* @__PURE__ */ new Set();
+  const skills = [];
+  const promises = SKILL_SOURCES.map(async (source) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+    try {
+      const res = await fetch(source.url, {
+        signal: controller.signal,
+        headers: { "Accept": "application/vnd.github.v3+json" }
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        for (const s of data.filter((s2) => s2.type === "dir")) {
+          if (!seen.has(s.name)) {
+            seen.add(s.name);
+            skills.push({
+              label: s.name,
+              value: `${source.base}/${s.name}`,
+              key: s.name
+            });
+          }
+        }
+      }
+    } catch (error) {
+      logError(`fetchSkills(${source.url})`, error);
+    } finally {
+      clearTimeout(timeout);
+    }
+  });
+  await Promise.all(promises);
+  return skills.sort((a, b) => a.label.localeCompare(b.label));
+};
+var addSkillToClaudeJson = (skillName, skillUrl) => {
+  try {
+    if (!fs.existsSync(SKILLS_DIR)) fs.mkdirSync(SKILLS_DIR, { recursive: true });
+    const skillPath = path2.join(SKILLS_DIR, skillName);
+    if (fs.existsSync(skillPath)) {
+      return { success: false, message: "Skill already installed" };
+    }
+    const match = skillUrl.match(/github\.com\/([^\/]+)\/([^\/]+)\/tree\/([^\/]+)\/(.+)/);
+    if (!match) return { success: false, message: "Invalid skill URL" };
+    const [, owner, repo, branch, skillSubPath] = match;
+    const tempDir = `/tmp/skill-clone-${Date.now()}`;
+    const sanitizedTempDir = sanitizeFilePath(`skill-clone-${Date.now()}`, "/tmp");
+    const finalTempDir = path2.join("/tmp", sanitizedTempDir || "skill-clone");
+    execSync(`git clone --depth 1 --filter=blob:none --sparse "https://github.com/${owner}/${repo}.git" "${finalTempDir}" 2>/dev/null`, { timeout: GIT_CLONE_TIMEOUT });
+    execSync(`cd "${finalTempDir}" && git sparse-checkout set "${skillSubPath}" 2>/dev/null`, { timeout: GIT_SPARSE_TIMEOUT });
+    const sourcePath = path2.join(finalTempDir, skillSubPath);
+    if (fs.existsSync(sourcePath)) {
+      execSync(`mv "${sourcePath}" "${skillPath}"`, { timeout: GIT_MOVE_TIMEOUT });
+    }
+    execSync(`rm -rf "${finalTempDir}"`, { timeout: GIT_CLEANUP_TIMEOUT });
+    return { success: true };
+  } catch (e) {
+    logError("addSkillToClaudeJson", e);
+    return { success: false, message: "Failed to download skill" };
+  }
+};
+var createDefaultSettings = () => {
+  if (!fs.existsSync(SETTINGS_PATH)) {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(DEFAULT_SETTINGS, null, 2));
+  }
+};
+var buildProfileData = (name, provider, apiKey, model, group, providers) => {
+  const prov = providers.find((p) => p.value === provider);
+  return {
+    name,
+    group: group || void 0,
+    env: {
+      ...apiKey && { ANTHROPIC_AUTH_TOKEN: apiKey },
+      ...model && { ANTHROPIC_MODEL: model },
+      ...prov?.url && { ANTHROPIC_BASE_URL: prov.url },
+      API_TIMEOUT_MS
+    },
+    model: "opus",
+    alwaysThinkingEnabled: true,
+    defaultMode: "bypassPermissions"
+  };
+};
+
+// src/cli.js
+ensureProfilesDir();
+var args = process.argv.slice(2);
+var cmd = args[0];
+if (args.includes("-v") || args.includes("--version")) {
+  console.log(`cm v${VERSION}`);
+  process.exit(0);
+}
+if (args.includes("-h") || args.includes("--help")) {
+  console.log(`cm v${VERSION} - Claude Settings Manager
+
+Usage: cm [command] [options]
+
+Commands:
+  (none)          Select profile interactively
+  new             Create a new profile
+  edit <n>        Edit profile (by name or number)
+  copy <n> <new>  Copy/duplicate a profile
+  delete <n>      Delete profile (by name or number)
+  status          Show current settings
+  list            List all profiles
+  parallel <profiles...>  Launch multiple Claude instances with different profiles
+  parallel list   Show available profiles for parallel launch
+  config          Open Claude settings.json in editor
+  mcp [query]     Search and add MCP servers
+  mcp remove      Remove MCP server from profile
+  skills          Browse and add Anthropic skills
+  skills list     List installed skills
+  skills remove   Remove an installed skill
+
+Options:
+  --last, -l      Use last profile without menu
+  --skip-update   Skip update check
+  --yolo          Run claude with --dangerously-skip-permissions
+  --force, -f     Skip confirmation prompts (e.g., for delete)
+  -v, --version   Show version
+  -h, --help      Show help
+
+Examples:
+  cm parallel "Z.AI (GLM)" "Anthropic Direct"     Launch 2 instances
+  cm parallel 1 2 3                              Launch first 3 profiles
+  cm parallel list                               Show available profiles`);
+  process.exit(0);
+}
+var skipUpdate = args.includes("--skip-update");
+var useLast = args.includes("--last") || args.includes("-l");
+var dangerMode = args.includes("--dangerously-skip-permissions") || args.includes("--yolo");
+if (useLast) {
+  const last = getLastProfile();
+  const lastPath = last ? path3.join(PROFILES_DIR, last) : null;
+  if (last && lastPath && fs2.existsSync(lastPath)) {
+    const name = applyProfile(last);
+    console.log(`\x1B[32m\u2713\x1B[0m Applied: ${name}
+`);
+    launchClaude(dangerMode);
+  } else {
+    console.log("\x1B[31mNo last profile found\x1B[0m");
+    process.exit(1);
+  }
+}
+var projectProfile = checkProjectProfile();
+if (projectProfile && !cmd) {
+  const profiles = loadProfiles();
+  const match = profiles.find((p) => p.label === projectProfile || p.value === projectProfile + ".json");
+  if (match) {
+    console.log(`\x1B[36mUsing project profile: ${match.label}\x1B[0m`);
+    applyProfile(match.value);
+    launchClaude(dangerMode);
+  }
+}
+if (cmd === "parallel") {
+  const profiles = loadProfiles();
+  if (args[1] === "list") {
+    console.log(`\x1B[1m\x1B[36mAvailable Profiles for Parallel Launch\x1B[0m`);
+    console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+    profiles.forEach((p, i) => {
+      const group = p.group ? `\x1B[33m[${p.group}]\x1B[0m ` : "";
+      console.log(`${i + 1}. ${group}${p.label}`);
+    });
+    console.log(`
+Usage: cm parallel <profile1> [profile2] [profile3]`);
+    console.log(`Example: cm parallel "Z.AI (GLM)" "Anthropic Direct" "MiniMax"`);
+    process.exit(0);
+  }
+  const targetProfiles = args.slice(1);
+  if (targetProfiles.length === 0) {
+    console.log("\x1B[31mUsage: cm parallel <profile1> [profile2] [profile3]\x1B[0m");
+    console.log('Use "cm parallel list" to see available profiles');
+    process.exit(1);
+  }
+  console.log(`\x1B[1m\x1B[36mLaunching ${targetProfiles.length} Claude instances in parallel...\x1B[0m`);
+  console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+  const launched = [];
+  for (let i = 0; i < targetProfiles.length; i++) {
+    const target = targetProfiles[i];
+    const idx = safeParseInt(target, -1);
+    const match = idx > 0 && idx <= profiles.length ? profiles[idx - 1] : profiles.find((p) => p.label.toLowerCase() === target?.toLowerCase());
+    if (!match) {
+      console.log(`\x1B[31m\u2717 Profile not found: ${target}\x1B[0m`);
+      continue;
+    }
+    const tempSettingsPath = path3.join(process.env.HOME, `.claude-parallel-${i}.json`);
+    const profilePath = path3.join(PROFILES_DIR, match.value);
+    try {
+      const profileData = JSON.parse(fs2.readFileSync(profilePath, "utf8"));
+      fs2.writeFileSync(tempSettingsPath, JSON.stringify(profileData, null, 2));
+      console.log(`\x1B[32m\u2713\x1B[0m Setting up: ${match.label}`);
+      const claudeArgs = ["--settings", tempSettingsPath];
+      if (dangerMode) {
+        claudeArgs.push("--dangerously-skip-permissions");
+      }
+      const child = spawn("claude", claudeArgs, {
+        detached: true,
+        stdio: "ignore"
+      });
+      child.unref();
+      launched.push({
+        profile: match.label,
+        settingsFile: tempSettingsPath,
+        pid: child.pid
+      });
+      await new Promise((resolve) => setTimeout(resolve, 1e3));
+    } catch (error) {
+      console.log(`\x1B[31m\u2717 Failed to launch ${match.label}: ${error.message}\x1B[0m`);
+    }
+  }
+  if (launched.length > 0) {
+    console.log(`
+\x1B[32m\u2713 Successfully launched ${launched.length} Claude instances!\x1B[0m`);
+    console.log(`
+Running instances:`);
+    launched.forEach((instance, i) => {
+      console.log(`  ${i + 1}. ${instance.profile} (PID: ${instance.pid})`);
+    });
+    console.log(`
+Settings files created:`);
+    launched.forEach((instance, i) => {
+      console.log(`  ~/.claude-parallel-${i}.json`);
+    });
+    console.log(`
+\x1B[33mTo clean up settings files later:\x1B[0m`);
+    console.log(`  rm ~/.claude-parallel-*.json`);
+  } else {
+    console.log(`\x1B[31mNo instances were launched successfully\x1B[0m`);
+  }
+  process.exit(0);
+}
+if (cmd === "status") {
+  const last = getLastProfile();
+  const profiles = loadProfiles();
+  const current = profiles.find((p) => p.value === last);
+  console.log(`\x1B[1m\x1B[36mClaude Settings Manager v${VERSION}\x1B[0m`);
+  console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+  if (current) {
+    console.log(`Current profile: \x1B[32m${current.label}\x1B[0m`);
+    console.log(`Model: ${current.data.env?.ANTHROPIC_MODEL || "default"}`);
+    console.log(`Provider: ${current.data.env?.ANTHROPIC_BASE_URL || "Anthropic Direct"}`);
+    const mcpServers = current.data.mcpServers || {};
+    if (Object.keys(mcpServers).length > 0) {
+      console.log(`
+Profile MCP Servers (${Object.keys(mcpServers).length}):`);
+      Object.keys(mcpServers).forEach((s) => console.log(`  - ${s}`));
+    }
+  } else {
+    console.log("No profile active");
+  }
+  const installedSkills = getInstalledSkills();
+  if (installedSkills.length > 0) {
+    console.log(`
+Installed Skills (${installedSkills.length}):`);
+    installedSkills.forEach((s) => console.log(`  - ${s}`));
+  }
+  try {
+    const claudeJson = JSON.parse(fs2.readFileSync(CLAUDE_JSON_PATH, "utf8"));
+    const globalMcp = claudeJson.mcpServers || {};
+    if (Object.keys(globalMcp).length > 0) {
+      console.log(`
+Global MCP Servers (${Object.keys(globalMcp).length}):`);
+      Object.keys(globalMcp).forEach((s) => console.log(`  - ${s}`));
+    }
+  } catch (error) {
+    logError("status-mcp", error);
+  }
+  try {
+    const ver = execSync2("claude --version 2>/dev/null", { encoding: "utf8" }).trim();
+    console.log(`
+Claude: ${ver}`);
+  } catch (error) {
+    logError("status-version", error);
+  }
+  process.exit(0);
+}
+if (cmd === "list") {
+  const profiles = loadProfiles();
+  console.log(`\x1B[1m\x1B[36mProfiles\x1B[0m (${profiles.length})`);
+  console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+  profiles.forEach((p, i) => {
+    const group = p.group ? `\x1B[33m[${p.group}]\x1B[0m ` : "";
+    console.log(`${i + 1}. ${group}${p.label}`);
+  });
+  process.exit(0);
+}
+if (cmd === "config") {
+  const editor = process.env.EDITOR || "nano";
+  createDefaultSettings();
+  console.log(`Opening ${SETTINGS_PATH} in ${editor}...`);
+  spawnSync(editor, [SETTINGS_PATH], { stdio: "inherit" });
+  process.exit(0);
+}
+if (cmd === "delete") {
+  const forceDelete = args.includes("--force") || args.includes("-f");
+  const profiles = loadProfiles();
+  const target = args[1];
+  if (!target) {
+    console.log("\x1B[31mUsage: cm delete <profile>\x1B[0m");
+    console.log("  profile: Profile name or number");
+    process.exit(1);
+  }
+  const idx = safeParseInt(target, -1);
+  const match = idx > 0 && idx <= profiles.length ? profiles[idx - 1] : profiles.find((p) => p.label.toLowerCase() === target?.toLowerCase());
+  if (!match) {
+    console.log(`\x1B[31mProfile not found: ${target}\x1B[0m`);
+    process.exit(1);
+  }
+  const shouldDelete = forceDelete || await confirm(`Delete profile "${match.label}"?`);
+  if (shouldDelete) {
+    const filePath = path3.join(PROFILES_DIR, match.value);
+    if (fs2.existsSync(filePath)) {
+      fs2.unlinkSync(filePath);
+      console.log(`\x1B[32m\u2713\x1B[0m Deleted: ${match.label}`);
+    } else {
+      console.log(`\x1B[31mProfile file not found: ${match.value}\x1B[0m`);
+    }
+  } else {
+    console.log("\x1B[33mCancelled\x1B[0m");
+  }
+  process.exit(0);
+}
+if (cmd === "edit") {
+  const profiles = loadProfiles();
+  const target = args[1];
+  if (!target) {
+    console.log("\x1B[31mUsage: cm edit <profile>\x1B[0m");
+    console.log("  profile: Profile name or number");
+    process.exit(1);
+  }
+  const idx = safeParseInt(target, -1);
+  const match = idx > 0 && idx <= profiles.length ? profiles[idx - 1] : profiles.find((p) => p.label.toLowerCase() === target?.toLowerCase());
+  if (match) {
+    const editor = process.env.EDITOR || "nano";
+    const filePath = path3.join(PROFILES_DIR, match.value);
+    if (fs2.existsSync(filePath)) {
+      spawnSync(editor, [filePath], { stdio: "inherit" });
+    } else {
+      console.log(`\x1B[31mProfile file not found: ${match.value}\x1B[0m`);
+    }
+  } else {
+    console.log(`\x1B[31mProfile not found: ${target}\x1B[0m`);
+  }
+  process.exit(0);
+}
+if (cmd === "copy") {
+  const profiles = loadProfiles();
+  const target = args[1];
+  const newName = args[2];
+  if (!newName) {
+    console.log("\x1B[31mUsage: cm copy <source> <new-name>\x1B[0m");
+    console.log("  source: Profile name or number");
+    console.log("  new-name: Name for the copied profile");
+    process.exit(1);
+  }
+  const idx = safeParseInt(target, -1);
+  const match = idx > 0 && idx <= profiles.length ? profiles[idx - 1] : profiles.find((p) => p.label.toLowerCase() === target?.toLowerCase());
+  if (!match) {
+    console.log(`\x1B[31mProfile not found: ${target}\x1B[0m`);
+    process.exit(1);
+  }
+  const sourcePath = path3.join(PROFILES_DIR, match.value);
+  const profile = JSON.parse(fs2.readFileSync(sourcePath, "utf8"));
+  profile.name = newName;
+  const newFilename = sanitizeProfileName(newName) + ".json";
+  const destPath = path3.join(PROFILES_DIR, newFilename);
+  if (fs2.existsSync(destPath)) {
+    const shouldOverwrite = await confirm(`Profile "${newName}" already exists. Overwrite?`);
+    if (!shouldOverwrite) {
+      console.log("\x1B[33mCancelled\x1B[0m");
+      process.exit(0);
+    }
+  }
+  fs2.writeFileSync(destPath, JSON.stringify(profile, null, 2));
+  console.log(`\x1B[32m\u2713\x1B[0m Copied "${match.label}" to "${newName}"`);
+  process.exit(0);
+}
+var McpSearch = () => {
+  const { exit } = useApp();
+  const [step, setStep] = useState(args[1] ? "loading" : "search");
+  const [query, setQuery] = useState(args[1] || "");
+  const [searchResults, setSearchResults] = useState({ servers: [], total: 0, hasMore: false, offset: 0 });
+  const [selectedServer, setSelectedServer] = useState(null);
+  const profiles = loadProfiles();
+  useEffect(() => {
+    const loadInitialResults = async () => {
+      if (args[1] && step === "loading") {
+        const results = await searchMcpServers(args[1]);
+        setSearchResults(results);
+        setStep("results");
+      }
+    };
+    loadInitialResults();
+  }, []);
+  const doSearch = async () => {
+    setStep("loading");
+    const results = await searchMcpServers(query, 0);
+    setSearchResults(results);
+    setStep("results");
+  };
+  const nextPage = async () => {
+    const results = await searchMcpServers(query, searchResults.offset + MCP_PAGE_SIZE);
+    setSearchResults(results);
+  };
+  const prevPage = async () => {
+    const results = await searchMcpServers(query, Math.max(0, searchResults.offset - MCP_PAGE_SIZE));
+    setSearchResults(results);
+  };
+  const serverItems = searchResults.servers.map((s) => ({
+    label: `${s.server.name} - ${s.server.description?.slice(0, 50) || ""}`,
+    value: s,
+    key: s.server.name + s.server.version
+  }));
+  const profileItems = profiles.map((p) => ({ label: p.label, value: p.value, key: p.key }));
+  useInput((input, key) => {
+    if (step === "results") {
+      if (key.return && !selectedServer) return;
+      if ((input === "n" || key.rightArrow) && searchResults.hasMore) {
+        nextPage();
+      }
+      if ((input === "p" || key.leftArrow) && searchResults.offset > 0) {
+        prevPage();
+      }
+    }
+  });
+  if (step === "search") {
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "MCP Server Search"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Search: "), /* @__PURE__ */ React.createElement(TextInput, { value: query, onChange: setQuery, onSubmit: doSearch })));
+  }
+  if (step === "loading") {
+    return /* @__PURE__ */ React.createElement(Box, { padding: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Searching MCP registry..."));
+  }
+  if (step === "results") {
+    if (searchResults.servers.length === 0) {
+      return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, 'No servers found for "', query, '"'));
+    }
+    const start = searchResults.offset + 1;
+    const end = Math.min(searchResults.offset + MCP_PAGE_SIZE, searchResults.total);
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "MCP Servers"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Showing ", start, "-", end, " of ", searchResults.total, " results"), /* @__PURE__ */ React.createElement(Text, { dimColor: true, color: "gray" }, "Navigation: n/\u2192 next page, p/\u2190 prev page"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(
+      SelectInput,
+      {
+        items: serverItems,
+        onSelect: (item) => {
+          setSelectedServer(item.value);
+          setStep("profile");
+        },
+        limit: 10
+      }
+    )));
+  }
+  if (step === "profile") {
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "Add to Profile"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, null, "Server: ", selectedServer.server.name), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Select profile:"), /* @__PURE__ */ React.createElement(
+      SelectInput,
+      {
+        items: profileItems,
+        onSelect: (item) => {
+          try {
+            const name = addMcpToProfile(selectedServer, item.value);
+            console.log(`
+\x1B[32m\u2713\x1B[0m Added ${name} to ${item.label}`);
+          } catch (error) {
+            console.log(`
+\x1B[31m\u2717\x1B[0m ${error.message}`);
+          }
+          exit();
+        }
+      }
+    )));
+  }
+  return null;
+};
+var SkillsBrowser = () => {
+  const { exit } = useApp();
+  const [allSkills, setAllSkills] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [offset, setOffset] = useState(0);
+  useEffect(() => {
+    const loadSkills = async () => {
+      const s = await fetchSkills();
+      setAllSkills(s);
+      setLoading(false);
+    };
+    loadSkills();
+  }, []);
+  const paginatedSkills = allSkills.slice(offset, offset + SKILLS_PAGE_SIZE);
+  const hasMore = offset + SKILLS_PAGE_SIZE < allSkills.length;
+  useInput((input, key) => {
+    if (!loading) {
+      if ((input === "n" || key.rightArrow) && hasMore) {
+        setOffset(offset + SKILLS_PAGE_SIZE);
+      }
+      if ((input === "p" || key.leftArrow) && offset > 0) {
+        setOffset(Math.max(0, offset - SKILLS_PAGE_SIZE));
+      }
+    }
+  });
+  if (loading) {
+    return /* @__PURE__ */ React.createElement(Box, { padding: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Loading skills..."));
+  }
+  if (allSkills.length === 0) {
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Could not fetch skills"));
+  }
+  const start = offset + 1;
+  const end = Math.min(offset + SKILLS_PAGE_SIZE, allSkills.length);
+  return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "Anthropic Skills"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Showing ", start, "-", end, " of ", allSkills.length, " skills"), /* @__PURE__ */ React.createElement(Text, { dimColor: true, color: "gray" }, "Navigation: n/\u2192 next page, p/\u2190 prev page"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(
+    SelectInput,
+    {
+      items: paginatedSkills,
+      onSelect: (item) => {
+        const result = addSkillToClaudeJson(item.label, item.value);
+        if (result.success) {
+          console.log(`
+\x1B[32m\u2713\x1B[0m Installed skill: ${item.label}`);
+          console.log(`\x1B[36mLocation: ~/.claude/skills/${item.label}/\x1B[0m`);
+        } else {
+          console.log(`
+\x1B[31m\u2717\x1B[0m ${result.message || "Failed to install skill"}`);
+        }
+        exit();
+      }
+    }
+  )));
+};
+if (cmd === "skills") {
+  const subCommand = args[1];
+  if (subCommand === "list") {
+    const installed = getInstalledSkills();
+    console.log(`\x1B[1m\x1B[36mInstalled Skills\x1B[0m (${installed.length})`);
+    console.log("\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500");
+    if (installed.length === 0) {
+      console.log("No skills installed");
+    } else {
+      installed.forEach((s, i) => console.log(`${i + 1}. ${s}`));
+    }
+    process.exit(0);
+  }
+  if (subCommand === "remove") {
+    const target = args[2];
+    if (!target) {
+      console.log("\x1B[31mUsage: cm skills remove <skill-name>\x1B[0m");
+      process.exit(1);
+    }
+    const installed = getInstalledSkills();
+    const idx = safeParseInt(target, -1);
+    const match = idx > 0 && idx <= installed.length ? installed[idx - 1] : installed.find((s) => s.toLowerCase() === target?.toLowerCase());
+    if (!match) {
+      console.log(`\x1B[31mSkill not found: ${target}\x1B[0m`);
+      console.log('Run "cm skills list" to see installed skills');
+      process.exit(1);
+    }
+    const shouldRemove = await confirm(`Remove skill "${match}"?`);
+    if (shouldRemove) {
+      const result = removeSkill(match);
+      if (result.success) {
+        console.log(`\x1B[32m\u2713\x1B[0m Removed skill: ${match}`);
+      } else {
+        console.log(`\x1B[31m\u2717\x1B[0m ${result.message}`);
+      }
+    } else {
+      console.log("\x1B[33mCancelled\x1B[0m");
+    }
+    process.exit(0);
+  }
+  render(/* @__PURE__ */ React.createElement(SkillsBrowser, null));
+} else if (cmd === "mcp") {
+  const subCommand = args[1];
+  if (subCommand === "remove") {
+    const profiles = loadProfiles();
+    if (profiles.length === 0) {
+      console.log("\x1B[31mNo profiles found\x1B[0m");
+      process.exit(1);
+    }
+    const serverName = args[2];
+    const targetProfile = args[3];
+    if (!targetProfile) {
+      console.log("\x1B[31mUsage: cm mcp remove <server-name> <profile>\x1B[0m");
+      console.log("  server-name: MCP server name to remove");
+      console.log("  profile: Profile name or number");
+      process.exit(1);
+    }
+    const idx = safeParseInt(targetProfile, -1);
+    const profileMatch = idx > 0 && idx <= profiles.length ? profiles[idx - 1] : profiles.find((p) => p.label.toLowerCase() === targetProfile?.toLowerCase());
+    if (!profileMatch) {
+      console.log(`\x1B[31mProfile not found: ${targetProfile}\x1B[0m`);
+      process.exit(1);
+    }
+    const profilePath = path3.join(PROFILES_DIR, profileMatch.value);
+    if (!fs2.existsSync(profilePath)) {
+      console.log(`\x1B[31mProfile file not found: ${profileMatch.value}\x1B[0m`);
+      process.exit(1);
+    }
+    const profile = JSON.parse(fs2.readFileSync(profilePath, "utf8"));
+    const mcpServers = profile.mcpServers || {};
+    if (Object.keys(mcpServers).length === 0) {
+      console.log(`\x1B[33mNo MCP servers configured in "${profileMatch.label}"\x1B[0m`);
+      process.exit(0);
+    }
+    if (!mcpServers[serverName]) {
+      console.log(`\x1B[31mMCP server not found: ${serverName}\x1B[0m`);
+      console.log(`Available servers: ${Object.keys(mcpServers).join(", ")}`);
+      process.exit(1);
+    }
+    const shouldRemove = await confirm(`Remove "${serverName}" from "${profileMatch.label}"?`);
+    if (shouldRemove) {
+      delete mcpServers[serverName];
+      profile.mcpServers = mcpServers;
+      fs2.writeFileSync(profilePath, JSON.stringify(profile, null, 2));
+      console.log(`\x1B[32m\u2713\x1B[0m Removed "${serverName}" from "${profileMatch.label}"`);
+    } else {
+      console.log("\x1B[33mCancelled\x1B[0m");
+    }
+    process.exit(0);
+  }
+  render(/* @__PURE__ */ React.createElement(McpSearch, null));
+} else if (cmd === "new") {
+  const NewProfileWizard2 = () => {
+    const { exit } = useApp();
+    const [step, setStep] = useState("name");
+    const [name, setName] = useState("");
+    const [provider, setProvider] = useState("");
+    const [apiKey, setApiKey] = useState("");
+    const [model, setModel] = useState("");
+    const [group, setGroup] = useState("");
+    const [validationErrors, setValidationErrors] = useState([]);
+    const handleSave = () => {
+      const profile = buildProfileData(name, provider, apiKey, model, group, PROVIDERS);
+      const validation = validateProfile(profile);
+      if (!validation.valid) {
+        setStep("error");
+        setValidationErrors(validation.errors);
+        return;
+      }
+      const filename = sanitizeProfileName(name) + ".json";
+      fs2.writeFileSync(path3.join(PROFILES_DIR, filename), JSON.stringify(profile, null, 2));
+      console.log(`
+\x1B[32m\u2713\x1B[0m Created: ${name}`);
+      exit();
+    };
+    const handleProviderSelect = (item) => {
+      setProvider(item.value);
+      const prov = PROVIDERS.find((p) => p.value === item.value);
+      setStep(prov.needsKey ? "apikey" : "model");
+    };
+    useInput((input, key) => {
+      if (step === "error") {
+        setStep("group");
+        setValidationErrors([]);
+      }
+    });
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "New Profile"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), step === "name" && /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Name: "), /* @__PURE__ */ React.createElement(TextInput, { value: name, onChange: setName, onSubmit: () => setStep("provider") })), step === "provider" && /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Provider:"), /* @__PURE__ */ React.createElement(SelectInput, { items: PROVIDERS, onSelect: handleProviderSelect })), step === "apikey" && /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "API Key: "), /* @__PURE__ */ React.createElement(TextInput, { value: apiKey, onChange: setApiKey, onSubmit: () => setStep("model"), mask: "*" })), step === "model" && /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Model ID (optional): "), /* @__PURE__ */ React.createElement(TextInput, { value: model, onChange: setModel, onSubmit: () => setStep("group") })), step === "group" && /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "Group (optional): "), /* @__PURE__ */ React.createElement(TextInput, { value: group, onChange: setGroup, onSubmit: handleSave })), step === "error" && /* @__PURE__ */ React.createElement(Box, { marginTop: 1, flexDirection: "column" }, /* @__PURE__ */ React.createElement(Text, { color: "red" }, "Validation errors:"), validationErrors.map((err, i) => /* @__PURE__ */ React.createElement(Text, { key: i, color: "yellow" }, "  \u2022 ", err)), /* @__PURE__ */ React.createElement(Text, { marginTop: 1 }, "Press any key to go back and fix...")));
+  };
+  render(/* @__PURE__ */ React.createElement(NewProfileWizard2, null));
+} else {
+  const LoadingScreen = ({ message = "Loading..." }) => {
+    const [dots, setDots] = useState("");
+    const [colorIdx, setColorIdx] = useState(0);
+    const colors = ["cyan", "blue", "magenta", "red", "yellow", "green"];
+    useEffect(() => {
+      const dotsInterval = setInterval(() => {
+        setDots((d) => d.length >= 3 ? "" : d + ".");
+      }, 500);
+      const colorInterval = setInterval(() => {
+        setColorIdx((i) => (i + 1) % colors.length);
+      }, 200);
+      return () => {
+        clearInterval(dotsInterval);
+        clearInterval(colorInterval);
+      };
+    }, []);
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: colors[colorIdx] }, LOGO), /* @__PURE__ */ React.createElement(Text, { bold: true, color: colors[(colorIdx + 3) % colors.length] }, "MANAGER v", VERSION), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, message, dots));
+  };
+  const ParallelSelector = ({ profiles, dangerMode: dangerMode2 }) => {
+    const { exit } = useApp();
+    const [selectedProfiles, setSelectedProfiles] = useState(/* @__PURE__ */ new Set());
+    const [step, setStep] = useState("select");
+    useInput((input, key) => {
+      if (step === "select") {
+        const num = safeParseInt(input, -1);
+        if (num >= 1 && num <= 9 && num <= profiles.length) {
+          const profile = profiles[num - 1];
+          const newSelected = new Set(selectedProfiles);
+          if (newSelected.has(profile.value)) {
+            newSelected.delete(profile.value);
+          } else {
+            newSelected.add(profile.value);
+          }
+          setSelectedProfiles(newSelected);
+        }
+        if (key.return && selectedProfiles.size > 0) {
+          setStep("launching");
+          launchParallelInstances();
+        }
+        if (key.escape) {
+          exit();
+        }
+        if (input === "a") {
+          setSelectedProfiles(new Set(profiles.map((p) => p.value)));
+        }
+        if (input === "c") {
+          setSelectedProfiles(/* @__PURE__ */ new Set());
+        }
+      }
+    });
+    const launchParallelInstances = async () => {
+      const selectedProfilesList = profiles.filter((p) => selectedProfiles.has(p.value));
+      console.log(`
+\x1B[1m\x1B[36mLaunching ${selectedProfilesList.length} Claude instances in parallel...\x1B[0m`);
+      console.log(`\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500`);
+      const launched = [];
+      for (let i = 0; i < selectedProfilesList.length; i++) {
+        const profile = selectedProfilesList[i];
+        const tempSettingsPath = path3.join(process.env.HOME, `.claude-parallel-${i}.json`);
+        const profilePath = path3.join(PROFILES_DIR, profile.value);
+        try {
+          const profileData = JSON.parse(fs2.readFileSync(profilePath, "utf8"));
+          fs2.writeFileSync(tempSettingsPath, JSON.stringify(profileData, null, 2));
+          console.log(`\x1B[32m\u2713\x1B[0m Setting up: ${profile.label}`);
+          const claudeArgs = ["--settings", tempSettingsPath];
+          if (dangerMode2) {
+            claudeArgs.push("--dangerously-skip-permissions");
+          }
+          const child = spawn("claude", claudeArgs, {
+            detached: true,
+            stdio: "ignore"
+          });
+          child.unref();
+          launched.push({
+            profile: profile.label,
+            settingsFile: tempSettingsPath,
+            pid: child.pid
+          });
+          await new Promise((resolve) => setTimeout(resolve, 1e3));
+        } catch (error) {
+          console.log(`\x1B[31m\u2717 Failed to launch ${profile.label}: ${error.message}\x1B[0m`);
+        }
+      }
+      if (launched.length > 0) {
+        console.log(`
+\x1B[32m\u2713 Successfully launched ${launched.length} Claude instances!\x1B[0m`);
+        console.log(`
+Running instances:`);
+        launched.forEach((instance, i) => {
+          console.log(`  ${i + 1}. ${instance.profile} (PID: ${instance.pid})`);
+        });
+        console.log(`
+\x1B[33mTo clean up settings files later:\x1B[0m`);
+        console.log(`  rm ~/.claude-parallel-*.json`);
+      } else {
+        console.log(`\x1B[31mNo instances were launched successfully\x1B[0m`);
+      }
+      exit();
+    };
+    if (step === "launching") {
+      return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "PARALLEL LAUNCHER"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "Launching Claude instances..."));
+    }
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "PARALLEL LAUNCHER"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "Select profiles to launch in parallel:"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, profiles.map((profile, i) => {
+      const isSelected = selectedProfiles.has(profile.value);
+      const group = profile.group ? `[${profile.group}] ` : "";
+      return /* @__PURE__ */ React.createElement(Text, { key: profile.value }, /* @__PURE__ */ React.createElement(Text, { color: isSelected ? "green" : "gray" }, isSelected ? "\u2713" : " ", " ", i + 1, ". ", group, profile.label));
+    })), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1, borderStyle: "single", borderColor: "gray" }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta" }, "Controls:"), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "1-9"), "     Toggle profile selection"), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "a"), "       Select all profiles"), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "c"), "       Clear all selections"), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Enter"), "   Launch selected profiles (", selectedProfiles.size, ")"), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Esc"), "     Back to main menu")));
+  };
+  const ProfileActionSelector = ({ profiles, action }) => {
+    const { exit } = useApp();
+    const [copyName, setCopyName] = useState("");
+    const [showCopyInput, setShowCopyInput] = useState(false);
+    const [selectedProfile, setSelectedProfile] = useState(null);
+    const titles = {
+      edit: "EDIT PROFILE",
+      copy: "COPY PROFILE",
+      delete: "DELETE PROFILE",
+      yolo: "YOLO LAUNCH"
+    };
+    const colors = {
+      edit: "cyan",
+      copy: "green",
+      delete: "red",
+      yolo: "yellow"
+    };
+    useInput((input, key) => {
+      if (showCopyInput) {
+        if (key.return && copyName.trim()) {
+          execSync2(`cm copy "${selectedProfile.label}" "${copyName}"`, { stdio: "inherit" });
+          exit();
+        }
+        if (key.escape) {
+          setShowCopyInput(false);
+          setCopyName("");
+        }
+        return;
+      }
+      const num = safeParseInt(input, -1);
+      if (num >= 1 && num <= profiles.length) {
+        const profile = profiles[num - 1];
+        if (action === "edit") {
+          const editor = process.env.EDITOR || "nano";
+          const filePath = path3.join(PROFILES_DIR, profile.value);
+          console.clear();
+          spawnSync(editor, [filePath], { stdio: "inherit" });
+          exit();
+        } else if (action === "copy") {
+          setSelectedProfile(profile);
+          setShowCopyInput(true);
+        } else if (action === "delete") {
+          execSync2(`cm delete "${profile.label}" --force`, { stdio: "inherit" });
+          exit();
+        } else if (action === "yolo") {
+          applyProfile(profile.value);
+          console.log(`
+\x1B[32m\u2713\x1B[0m Applied: ${profile.label}
+`);
+          launchClaude(true);
+        }
+      }
+      if (key.escape) exit();
+    });
+    if (showCopyInput) {
+      return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "green" }, "COPY PROFILE"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { marginTop: 1 }, "Copying: ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, selectedProfile?.label)), /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, "New name: "), /* @__PURE__ */ React.createElement(TextInput, { value: copyName, onChange: setCopyName })), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Enter to confirm \u2022 Esc to cancel"));
+    }
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: colors[action] }, titles[action]), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "Select a profile:"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, profiles.map((p, i) => /* @__PURE__ */ React.createElement(Text, { key: p.value }, /* @__PURE__ */ React.createElement(Text, { color: "gray" }, i + 1, ". "), /* @__PURE__ */ React.createElement(Text, null, p.group ? `[${p.group}] ` : "", p.label)))), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Press 1-", profiles.length, " to select \u2022 Esc to cancel"));
+  };
+  const McpRemoveSelector = ({ profiles }) => {
+    const { exit } = useApp();
+    const [step, setStep] = useState("profile");
+    const [selectedProfile, setSelectedProfile] = useState(null);
+    const [mcpServers, setMcpServers] = useState([]);
+    useInput((input, key) => {
+      const num = safeParseInt(input, -1);
+      if (step === "profile") {
+        if (num >= 1 && num <= profiles.length) {
+          const profile = profiles[num - 1];
+          setSelectedProfile(profile);
+          const servers = Object.keys(profile.data.mcpServers || {});
+          if (servers.length === 0) {
+            console.log("\n\x1B[33mNo MCP servers in this profile\x1B[0m");
+            exit();
+          }
+          setMcpServers(servers);
+          setStep("server");
+        }
+      } else if (step === "server") {
+        if (num >= 1 && num <= mcpServers.length) {
+          const serverName = mcpServers[num - 1];
+          const profilePath = path3.join(PROFILES_DIR, selectedProfile.value);
+          const profileData = JSON.parse(fs2.readFileSync(profilePath, "utf8"));
+          delete profileData.mcpServers[serverName];
+          fs2.writeFileSync(profilePath, JSON.stringify(profileData, null, 2));
+          console.log(`
+\x1B[32m\u2713\x1B[0m Removed MCP server: ${serverName}`);
+          exit();
+        }
+      }
+      if (key.escape) exit();
+    });
+    if (step === "server") {
+      return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "red" }, "REMOVE MCP SERVER"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { marginTop: 1 }, "Profile: ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, selectedProfile?.label)), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "Select server to remove:"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, mcpServers.map((s, i) => /* @__PURE__ */ React.createElement(Text, { key: s }, /* @__PURE__ */ React.createElement(Text, { color: "gray" }, i + 1, ". "), /* @__PURE__ */ React.createElement(Text, null, s)))), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Press 1-", mcpServers.length, " to remove \u2022 Esc to cancel"));
+    }
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "red" }, "REMOVE MCP SERVER"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "Select profile:"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, profiles.map((p, i) => {
+      const count = Object.keys(p.data.mcpServers || {}).length;
+      return /* @__PURE__ */ React.createElement(Text, { key: p.value }, /* @__PURE__ */ React.createElement(Text, { color: "gray" }, i + 1, ". "), /* @__PURE__ */ React.createElement(Text, null, p.label, " "), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "(", count, " servers)"));
+    })), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Press 1-", profiles.length, " to select \u2022 Esc to cancel"));
+  };
+  const SkillsRemoveSelector = () => {
+    const { exit } = useApp();
+    const skills = getInstalledSkills();
+    useInput((input, key) => {
+      const num = safeParseInt(input, -1);
+      if (num >= 1 && num <= skills.length) {
+        const skill = skills[num - 1];
+        removeSkill(skill);
+        console.log(`
+\x1B[32m\u2713\x1B[0m Removed skill: ${skill}`);
+        exit();
+      }
+      if (key.escape) exit();
+    });
+    if (skills.length === 0) {
+      return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "red" }, "REMOVE SKILL"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "No skills installed"), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Press Esc to go back"));
+    }
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "red" }, "REMOVE SKILL"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "Select skill to remove:"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, skills.map((s, i) => /* @__PURE__ */ React.createElement(Text, { key: s }, /* @__PURE__ */ React.createElement(Text, { color: "gray" }, i + 1, ". "), /* @__PURE__ */ React.createElement(Text, null, s)))), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Press 1-", skills.length, " to remove \u2022 Esc to cancel"));
+  };
+  const App = () => {
+    const [step, setStep] = useState("loading");
+    const [updateInfo, setUpdateInfo] = useState(null);
+    const [filter, setFilter] = useState("");
+    const [showHelp, setShowHelp] = useState(false);
+    const [showCommandPalette, setShowCommandPalette] = useState(false);
+    const [commandInput, setCommandInput] = useState("");
+    const profiles = loadProfiles();
+    const commands = [
+      // Profile Management
+      { label: "/new", description: "Create new profile", icon: "\u2795", category: "Profiles", action: () => render(/* @__PURE__ */ React.createElement(NewProfileWizard, null)) },
+      { label: "/edit", description: "Edit a profile", icon: "\u270F\uFE0F", category: "Profiles", action: () => setStep("edit") },
+      { label: "/copy", description: "Duplicate a profile", icon: "\u{1F4CB}", category: "Profiles", action: () => setStep("copy") },
+      { label: "/delete", description: "Delete a profile", icon: "\u{1F5D1}\uFE0F", category: "Profiles", action: () => setStep("delete") },
+      { label: "/list", description: "List all profiles", icon: "\u{1F4C4}", category: "Profiles", action: () => {
+        execSync2("cm list", { stdio: "inherit" });
+        process.exit(0);
+      } },
+      // Launch Options
+      { label: "/parallel", description: "Launch multiple profiles in parallel", icon: "\u{1F680}", category: "Launch", action: () => setStep("parallel") },
+      { label: "/yolo", description: "Launch with --dangerously-skip-permissions", icon: "\u26A1", category: "Launch", action: () => setStep("yolo") },
+      // Extensions
+      { label: "/mcp", description: "Search and add MCP servers", icon: "\u{1F50C}", category: "Extensions", action: () => render(/* @__PURE__ */ React.createElement(McpSearch, null)) },
+      { label: "/mcp-remove", description: "Remove MCP server from profile", icon: "\u{1F50C}", category: "Extensions", action: () => setStep("mcp-remove") },
+      { label: "/skills", description: "Browse and install skills", icon: "\u{1F3AF}", category: "Extensions", action: () => render(/* @__PURE__ */ React.createElement(SkillsBrowser, null)) },
+      { label: "/skills-remove", description: "Remove an installed skill", icon: "\u{1F3AF}", category: "Extensions", action: () => setStep("skills-remove") },
+      // Settings & Info
+      { label: "/status", description: "Show current settings & info", icon: "\u{1F4CA}", category: "Info", action: () => {
+        execSync2("cm status", { stdio: "inherit" });
+        process.exit(0);
+      } },
+      { label: "/config", description: "Edit Claude settings.json", icon: "\u2699\uFE0F", category: "Info", action: () => {
+        execSync2("cm config", { stdio: "inherit" });
+        process.exit(0);
+      } },
+      { label: "/help", description: "Show keyboard shortcuts", icon: "\u2753", category: "Info", action: () => setShowHelp(true) },
+      { label: "/quit", description: "Exit cm", icon: "\u{1F6AA}", category: "Info", action: () => process.exit(0) }
+    ];
+    const filteredProfiles = useMemo(() => {
+      if (!filter) return profiles;
+      const fuse = new Fuse(profiles, {
+        keys: ["label", "group"],
+        threshold: FUSE_THRESHOLD,
+        ignoreLocation: true,
+        includeScore: true
+      });
+      return fuse.search(filter).map((r) => r.item);
+    }, [profiles, filter]);
+    const filteredCommands = useMemo(() => {
+      if (!commandInput) return commands;
+      const search = commandInput.toLowerCase().replace(/^\//, "");
+      const fuse = new Fuse(commands, {
+        keys: ["label", "description"],
+        threshold: FUSE_THRESHOLD,
+        ignoreLocation: true
+      });
+      return fuse.search(search).map((r) => r.item);
+    }, [commands, commandInput]);
+    useEffect(() => {
+      setTimeout(() => setStep("select"), 1500);
+      if (!skipUpdate) {
+        checkForUpdate(skipUpdate).then(setUpdateInfo);
+      }
+    }, []);
+    useInput((input, key) => {
+      if (showCommandPalette) {
+        if (key.escape) {
+          setShowCommandPalette(false);
+          setCommandInput("");
+          return;
+        }
+        if (key.return) {
+          const matchedCommand = commandInput.startsWith("/") ? commands.find((c) => c.label === commandInput) : filteredCommands[0];
+          if (matchedCommand) {
+            setShowCommandPalette(false);
+            setCommandInput("");
+            matchedCommand.action();
+          }
+          return;
+        }
+        if (key.backspace || key.delete) {
+          setCommandInput((c) => c.slice(0, -1));
+          if (commandInput.length <= 1) {
+            setShowCommandPalette(false);
+          }
+          return;
+        }
+        if (input && !key.ctrl && !key.meta) {
+          setCommandInput((c) => c + input);
+        }
+        return;
+      }
+      if (step === "select") {
+        const num = safeParseInt(input, -1);
+        if (num >= 1 && num <= 9 && num <= filteredProfiles.length) {
+          const profile = filteredProfiles[num - 1];
+          applyProfile(profile.value);
+          console.log(`
+\x1B[32m\u2713\x1B[0m Applied: ${profile.label}
+`);
+          launchClaude(dangerMode);
+        }
+        if (input === "u" && updateInfo?.needsUpdate) {
+          console.log("\n\x1B[33mUpdating Claude...\x1B[0m\n");
+          try {
+            if (process.platform === "darwin") {
+              execSync2("brew upgrade claude-code", { stdio: "inherit" });
+            } else {
+              execSync2("npm update -g @anthropic-ai/claude-code", { stdio: "inherit" });
+            }
+            console.log("\x1B[32m\u2713 Updated!\x1B[0m\n");
+            setUpdateInfo({ ...updateInfo, needsUpdate: false });
+          } catch (error) {
+            console.log("\x1B[31m\u2717 Update failed\x1B[0m\n");
+            logError("update", error);
+          }
+        }
+        if (input === "n") {
+          render(/* @__PURE__ */ React.createElement(NewProfileWizard, null));
+          return;
+        }
+        if (input === "e") {
+          setStep("edit");
+          return;
+        }
+        if (input === "p") {
+          setStep("parallel");
+          return;
+        }
+        if (input === "y") {
+          setStep("yolo");
+          return;
+        }
+        if (input === "m") {
+          render(/* @__PURE__ */ React.createElement(McpSearch, null));
+          return;
+        }
+        if (input === "s") {
+          render(/* @__PURE__ */ React.createElement(SkillsBrowser, null));
+          return;
+        }
+        if (input === "i") {
+          execSync2("cm status", { stdio: "inherit" });
+          process.exit(0);
+        }
+        if (input === "q") {
+          process.exit(0);
+        }
+        if (input === "/" && !showHelp) {
+          setShowCommandPalette(true);
+          setCommandInput("/");
+          return;
+        }
+        if (input.match(/^[a-zA-Z]$/) && !["u", "c", "?", "/", "n", "e", "p", "y", "m", "s", "i", "q"].includes(input)) {
+          setFilter((f) => f + input);
+        }
+        if (key.backspace || key.delete) {
+          setFilter((f) => f.slice(0, -1));
+        }
+        if (key.escape) {
+          setFilter("");
+        }
+        if (input === "?") {
+          setShowHelp(true);
+        }
+        if (input === "c") {
+          const editor = process.env.EDITOR || "nano";
+          createDefaultSettings();
+          console.clear();
+          spawnSync(editor, [SETTINGS_PATH], { stdio: "inherit" });
+          console.log("\n\x1B[36mConfig edited. Press Enter to continue...\x1B[0m");
+        }
+      }
+      if (showHelp && (input === "q" || input === "?" || key.escape || key.return)) {
+        setShowHelp(false);
+      }
+    });
+    const groupedItems = [];
+    const groups = [...new Set(filteredProfiles.map((p) => p.group).filter(Boolean))];
+    if (groups.length > 0) {
+      groups.forEach((g) => {
+        groupedItems.push({ label: `\u2500\u2500 ${g} \u2500\u2500`, value: `group-${g}`, key: `group-${g}`, disabled: true });
+        filteredProfiles.filter((p) => p.group === g).forEach((p, i) => {
+          groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` });
+        });
+      });
+      const ungrouped = filteredProfiles.filter((p) => !p.group);
+      if (ungrouped.length > 0) {
+        groupedItems.push({ label: "\u2500\u2500 Other \u2500\u2500", value: "group-other", key: "group-other", disabled: true });
+        ungrouped.forEach((p, i) => groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` }));
+      }
+    } else {
+      filteredProfiles.forEach((p, i) => groupedItems.push({ ...p, label: `${i + 1}. ${p.label}` }));
+    }
+    if (step === "loading") {
+      return /* @__PURE__ */ React.createElement(LoadingScreen, { message: "Initializing Claude Manager" });
+    }
+    if (step === "parallel") {
+      return /* @__PURE__ */ React.createElement(ParallelSelector, { profiles, dangerMode });
+    }
+    if (step === "edit") {
+      return /* @__PURE__ */ React.createElement(ProfileActionSelector, { profiles, action: "edit" });
+    }
+    if (step === "copy") {
+      return /* @__PURE__ */ React.createElement(ProfileActionSelector, { profiles, action: "copy" });
+    }
+    if (step === "delete") {
+      return /* @__PURE__ */ React.createElement(ProfileActionSelector, { profiles, action: "delete" });
+    }
+    if (step === "yolo") {
+      return /* @__PURE__ */ React.createElement(ProfileActionSelector, { profiles, action: "yolo" });
+    }
+    if (step === "mcp-remove") {
+      return /* @__PURE__ */ React.createElement(McpRemoveSelector, { profiles });
+    }
+    if (step === "skills-remove") {
+      return /* @__PURE__ */ React.createElement(SkillsRemoveSelector, null);
+    }
+    if (profiles.length === 0) {
+      return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "CLAUDE MANAGER"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Text, { color: "yellow", marginTop: 1 }, "No profiles found!"), /* @__PURE__ */ React.createElement(Text, null, "Run: cm new"));
+    }
+    const handleSelect = (item) => {
+      if (item.disabled) return;
+      applyProfile(item.value);
+      console.log(`
+\x1B[32m\u2713\x1B[0m Applied: ${item.label.replace(/^\d+\.\s*/, "")}
+`);
+      launchClaude(dangerMode);
+    };
+    const lastProfile = getLastProfile();
+    const currentProfile = profiles.find((p) => p.value === lastProfile);
+    const installedSkills = getInstalledSkills();
+    const totalMcpServers = profiles.reduce((acc, p) => acc + Object.keys(p.data.mcpServers || {}).length, 0);
+    return /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1 }, /* @__PURE__ */ React.createElement(Box, { flexDirection: "row", justifyContent: "space-between" }, /* @__PURE__ */ React.createElement(Box, { flexDirection: "column" }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, LOGO), /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta" }, "MANAGER v", VERSION)), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", alignItems: "flex-end" }, updateInfo?.current && /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Claude v", updateInfo.current), updateInfo?.needsUpdate && /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "\u2B06 Update available (u)"))), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "row", marginTop: 1 }, /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", width: "50%" }, /* @__PURE__ */ React.createElement(Box, { borderStyle: "round", borderColor: "cyan", flexDirection: "column", paddingX: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "\u{1F4CB} PROFILES (", profiles.length, ")"), filter && /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "\u{1F50D} Filter: ", filter), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, filteredProfiles.slice(0, 7).map((p, i) => {
+      const isCurrent = p.value === lastProfile;
+      return /* @__PURE__ */ React.createElement(Text, { key: p.value }, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, i + 1), /* @__PURE__ */ React.createElement(Text, { color: isCurrent ? "green" : "white" }, isCurrent ? " \u25CF " : "   "), /* @__PURE__ */ React.createElement(Text, { color: isCurrent ? "green" : "white" }, p.label), p.group && /* @__PURE__ */ React.createElement(Text, { dimColor: true }, " [", p.group, "]"));
+    }), filteredProfiles.length > 7 && /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "  +", filteredProfiles.length - 7, " more..."))), currentProfile && /* @__PURE__ */ React.createElement(Box, { borderStyle: "round", borderColor: "green", flexDirection: "column", paddingX: 1, marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "green" }, "\u2713 ACTIVE PROFILE"), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, currentProfile.label)), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Model: ", currentProfile.data.model || "default"), Object.keys(currentProfile.data.mcpServers || {}).length > 0 && /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "MCP: ", Object.keys(currentProfile.data.mcpServers).join(", ")))), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", width: "50%", marginLeft: 1 }, /* @__PURE__ */ React.createElement(Box, { borderStyle: "round", borderColor: "magenta", flexDirection: "column", paddingX: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta" }, "\u26A1 QUICK ACTIONS"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "n"), " ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, "New Profile")), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "e"), " ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, "Edit Profile")), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "p"), " ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, "Parallel Launch"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u{1F680}")), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "y"), " ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, "YOLO Mode"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u26A1")))), /* @__PURE__ */ React.createElement(Box, { borderStyle: "round", borderColor: "yellow", flexDirection: "column", paddingX: 1, marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "yellow" }, "\u{1F50C} EXTENSIONS"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "m"), " ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, "MCP Servers"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "(", totalMcpServers, " installed)")), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "s"), " ", /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, "Skills"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "(", installedSkills.length, " installed)")))), /* @__PURE__ */ React.createElement(Box, { borderStyle: "round", borderColor: "gray", flexDirection: "column", paddingX: 1, marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "gray" }, "\u{1F4CA} INFO"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "i"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Status")), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "c"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Config")), /* @__PURE__ */ React.createElement(Text, null, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "?"), " ", /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Help")))))), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "row", justifyContent: "space-between", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, { dimColor: true }, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "1-9"), " select \u2022", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "\u2191\u2193"), " navigate \u2022", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Enter"), " launch \u2022", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "a-z"), " filter \u2022", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "/"), " commands"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "q"), " quit")), showCommandPalette && /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1, marginTop: 1, borderStyle: "double", borderColor: "magenta" }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta" }, "Command Palette"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Box, { marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, ">"), /* @__PURE__ */ React.createElement(Text, { color: "white" }, commandInput)), (() => {
+      const categories = [...new Set(filteredCommands.map((c) => c.category))];
+      return categories.map((cat) => /* @__PURE__ */ React.createElement(Box, { key: cat, flexDirection: "column", marginTop: 1 }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "yellow" }, cat), filteredCommands.filter((c) => c.category === cat).map((cmd2) => /* @__PURE__ */ React.createElement(Text, { key: cmd2.label }, /* @__PURE__ */ React.createElement(Text, null, cmd2.icon || "\u2022", " "), /* @__PURE__ */ React.createElement(Text, { color: "cyan" }, cmd2.label), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, " - "), /* @__PURE__ */ React.createElement(Text, { color: "gray" }, cmd2.description)))));
+    })(), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501\u2501"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "Enter to execute \u2022 Esc to close \u2022 Type to filter")), showHelp && /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", padding: 1, marginTop: 1, borderStyle: "single", borderColor: "cyan" }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "cyan" }, "Keyboard Shortcuts"), /* @__PURE__ */ React.createElement(Text, { dimColor: true }, "\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500"), /* @__PURE__ */ React.createElement(Box, { flexDirection: "row" }, /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", width: "50%" }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta" }, "Navigation"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "1-9"), "     Quick select profile"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "\u2191/\u2193"), "     Navigate list"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Enter"), "   Select & launch"), /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta", marginTop: 1 }, "Search"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "a-z"), "     Fuzzy filter"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "Esc"), "     Clear filter")), /* @__PURE__ */ React.createElement(Box, { flexDirection: "column", width: "50%" }, /* @__PURE__ */ React.createElement(Text, { bold: true, color: "magenta" }, "Actions"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "n"), "       New profile"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "e"), "       Edit profile"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "p"), "       Parallel launch"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "y"), "       YOLO mode"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "m"), "       MCP servers"), /* @__PURE__ */ React.createElement(Text, null, "  ", /* @__PURE__ */ React.createElement(Text, { color: "yellow" }, "s"), "       Skills"))), /* @__PURE__ */ React.createElement(Text, { dimColor: true, marginTop: 1 }, "Press ? or Esc to close")));
+  };
+  render(/* @__PURE__ */ React.createElement(App, null));
+}

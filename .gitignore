@@ -1,31 +1,5 @@
 node_modules/
-cm
-cm-bin
+dist/
+coverage/
 *.log
 .DS_Store
-.claude/
-
-# Build artifacts
-bun.lock
-package-lock.json
-
-# Unrelated files
-*.pptx
-*.html
-*.png
-*.cjs
-*.md
-!README.md
-!install.sh
-launch.sh
-shell-function.sh
-zai-settings.json
-create-*.js
-update-*.js
-content-*.md
-claude-manager/
-dist
-
-# Added for safety
-.env
-.env.*

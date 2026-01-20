@@ -1,0 +1,15 @@
+{
+  "env": {
+    "ANTHROPIC_MODEL": "claude-sonnet-4-20250514",
+    "ANTHROPIC_AUTH_TOKEN": "491b92c5874241fda8be6d2ca7bee9f1.rZfLVonbDVc1gfhf",
+    "ANTHROPIC_BASE_URL": "https://api.z.ai/api/anthropic",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
+  },
+  "model": "opus",
+  "enabledPlugins": {
+    "glm-plan-usage@zai-coding-plugins": true
+  },
+  "alwaysThinkingEnabled": true,
+  "defaultMode": "bypassPermissions"
+}

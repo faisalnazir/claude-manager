@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+html { background: #ffffff; }
+body {
+  width: 720pt; height: 405pt; margin: 0; padding: 0;
+  background: #ffffff;
+  font-family: 'Space Grotesk', Arial, sans-serif;
+  display: flex;
+  color: #2C3E50;
+}
+.header {
+  background: #4472C4;
+  color: #ffffff;
+  height: 80pt;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  padding: 0 40pt;
+  position: absolute;
+  top: 0;
+}
+.content {
+  margin-top: 80pt;
+  padding: 25pt 40pt;
+  flex: 1;
+}
+h1 {
+  font-family: 'Space Grotesk', Arial, sans-serif;
+  font-weight: 700;
+  color: #ffffff;
+  font-size: 36pt;
+  font-weight: bold;
+  margin: 0;
+}
+ul {
+  font-size: 18pt;
+  line-height: 1.4;
+  margin: 15pt 0;
+}
+li {
+  margin: 10pt 0;
+  color: #2C3E50;
+}
+.highlight {
+  color: #F39C12;
+  font-weight: bold;
+}
+.command-box {
+  background: #1C2833;
+  color: #F8F9FA;
+  padding: 12pt 18pt;
+  border-radius: 8pt;
+  font-family: 'Courier New', monospace;
+  font-size: 15pt;
+  margin: 15pt 0;
+}
+.cta {
+  background: #F39C12;
+  color: #ffffff;
+  padding: 12pt;
+  border-radius: 8pt;
+  text-align: center;
+  font-size: 16pt;
+  font-weight: bold;
+  margin: 10pt 0 0 0;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Getting Started</h1>
+</div>
+<div class="content">
+  <ul>
+    <li><span class="highlight">Simple installation:</span> one-line curl command</li>
+    <li>Works <span class="highlight">immediately in terminal</span></li>
+    <li><span class="highlight">No separate chat window</span> needed</li>
+    <li>Explain code and fix bugs with <span class="highlight">plain English</span></li>
+  </ul>
+  <div class="command-box">
+    <p>claude chat "help me understand this codebase"</p>
+  </div>
+</div>
+</body>
+</html>

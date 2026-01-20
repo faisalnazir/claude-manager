@@ -2,13 +2,14 @@
 
 A powerful terminal app for managing Claude Code settings, profiles, MCP servers, and skills. Switch between different AI providers, models, and configurations with a single command.
 
-![Version](https://img.shields.io/badge/version-1.5.3-blue)
+![Version](https://img.shields.io/badge/version-1.6.0-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
+![Tests](https://img.shields.io/badge/tests-26%20passed-green)
 
 ## Features
 
 - 🔄 **Profile Management** - Create, edit, and switch between multiple Claude configurations
-- 🚀 **Quick Launch** - Select profile and launch Claude in one command
+- 🚀 **Parallel Launch** - Run multiple Claude instances with different profiles simultaneously
 - 🔌 **MCP Server Registry** - Search and add MCP servers from the official registry
 - 🎯 **Skills Browser** - Browse and install skills from 3 repositories
 - 📁 **Per-Project Profiles** - Auto-select profiles based on project directory
@@ -16,6 +17,7 @@ A powerful terminal app for managing Claude Code settings, profiles, MCP servers
 - 🔍 **Fuzzy Search** - Type to filter profiles
 - 📦 **Profile Groups** - Organize profiles by category
 - 🔄 **Auto-Update Check** - Get notified when Claude updates are available
+- ⚡ **Smart Caching** - Cached MCP and skills queries for faster performance
 
 ## Installation
 
@@ -60,8 +62,17 @@ cm --yolo       # Launch with --dangerously-skip-permissions
 | `cm list` | List all profiles |
 | `cm new` | Create new profile wizard |
 | `cm edit <name\|num>` | Edit profile in $EDITOR |
+| `cm copy <src> <dest>` | Duplicate a profile |
 | `cm delete <name\|num>` | Delete profile |
 | `cm status` | Show current settings, MCP servers, and skills |
+
+### Parallel Launch
+
+```bash
+cm parallel "Z.AI (GLM)" "Anthropic Direct"     # Launch 2 instances
+cm parallel 1 2 3                               # Launch first 3 profiles
+cm parallel list                                 # Show available profiles
+```
 
 ### MCP Servers
 
@@ -69,6 +80,7 @@ cm --yolo       # Launch with --dangerously-skip-permissions
 cm mcp              # Search MCP registry interactively
 cm mcp github       # Search for "github" servers
 cm mcp web          # Search for "web" servers
+cm mcp remove <server> <profile>  # Remove MCP from profile
 ```
 
 Select a server → Choose profile → Server config added to profile.
@@ -77,6 +89,8 @@ Select a server → Choose profile → Server config added to profile.
 
 ```bash
 cm skills           # Browse and install skills
+cm skills list      # List installed skills
+cm skills remove    # Remove an installed skill
 ```
 
 Skills are downloaded from 3 repositories:
@@ -91,8 +105,28 @@ Skills are downloaded from 3 repositories:
 | `--last`, `-l` | Use last profile without menu |
 | `--skip-update` | Skip Claude update check |
 | `--yolo` | Run Claude with `--dangerously-skip-permissions` |
+| `--force`, `-f` | Skip confirmation prompts |
 | `-v`, `--version` | Show version |
 | `-h`, `--help` | Show help |
+
+## Development
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests
+npm test
+
+# Run tests with coverage
+npm test:coverage
+
+# Build
+npm run build
+
+# Lint
+npm run lint
+```
 
 ## Profiles
 
@@ -116,9 +150,28 @@ Profiles are stored in `~/.claude/profiles/*.json`
   "alwaysThinkingEnabled": true,
   "defaultMode": "bypassPermissions",
   "mcpServers": {
-    "web-search": {
+    "zai-mcp-server": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@z_ai/mcp-server"]
+    },
+    "web-search-prime": {
       "type": "http",
       "url": "https://api.z.ai/api/mcp/web_search_prime/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-key"
+      }
+    },
+    "web-reader": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/web_reader/mcp",
+      "headers": {
+        "Authorization": "Bearer your-api-key"
+      }
+    },
+    "zread": {
+      "type": "http",
+      "url": "https://api.z.ai/api/mcp/zread/mcp",
       "headers": {
         "Authorization": "Bearer your-api-key"
       }
@@ -150,6 +203,7 @@ Pre-configured in `cm new`:
 | Amazon Bedrock | Default | No API key needed |
 | Z.AI | `https://api.z.ai/api/anthropic` | Standard `sk-ant-` keys |
 | MiniMax | `https://api.minimax.io/anthropic` | Supports both `sk-ant-` and `sk-cp-` (coding plan) keys |
+| Kimi for Coding | `https://api.kimi.com/coding/` | Moonshot AI provider |
 | Custom | Your URL | Depends on provider |
 
 **MiniMax Coding Plan Keys**: If you have a MiniMax coding plan subscription, get your `sk-cp-` key from the [Account/Coding Plan](https://platform.minimax.io/user-center/payment/coding-plan) page. Regular platform keys (`sk-ant-`) are available from the [API Keys](https://platform.minimax.io/user-center/basic-information/interface-key) page.
@@ -203,6 +257,14 @@ npm update -g claude-manager
 ## Contributing
 
 Pull requests welcome! Please ensure no API keys or sensitive data in commits.
+
+```bash
+# Run tests before committing
+npm test
+
+# Run linting
+npm run lint
+```
 
 ## License
 
