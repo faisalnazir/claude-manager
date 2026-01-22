@@ -1104,7 +1104,7 @@ if (cmd === 'skills') {
       { label: '/edit', description: 'Edit a profile', icon: '✏️', category: 'Profiles', action: () => setStep('edit') },
       { label: '/copy', description: 'Duplicate a profile', icon: '📋', category: 'Profiles', action: () => setStep('copy') },
       { label: '/delete', description: 'Delete a profile', icon: '🗑️', category: 'Profiles', action: () => setStep('delete') },
-      { label: '/list', description: 'List all profiles', icon: '📄', category: 'Profiles', action: () => { execSync('cm list', { stdio: 'inherit' }); process.exit(0); } },
+      { label: '/list', description: 'List all profiles', icon: '📄', category: 'Profiles', action: () => { execSync('cm list', { stdio: 'inherit' }); } },
       
       // Launch Options
       { label: '/parallel', description: 'Launch multiple profiles in parallel', icon: '🚀', category: 'Launch', action: () => setStep('parallel') },
@@ -1117,8 +1117,8 @@ if (cmd === 'skills') {
       { label: '/skills-remove', description: 'Remove an installed skill', icon: '🎯', category: 'Extensions', action: () => setStep('skills-remove') },
       
       // Settings & Info
-      { label: '/status', description: 'Show current settings & info', icon: '📊', category: 'Info', action: () => { execSync('cm status', { stdio: 'inherit' }); process.exit(0); } },
-      { label: '/config', description: 'Edit Claude settings.json', icon: '⚙️', category: 'Info', action: () => { execSync('cm config', { stdio: 'inherit' }); process.exit(0); } },
+      { label: '/status', description: 'Show current settings & info', icon: '📊', category: 'Info', action: () => { execSync('cm status', { stdio: 'inherit' }); } },
+      { label: '/config', description: 'Edit Claude settings.json', icon: '⚙️', category: 'Info', action: () => { execSync('cm config', { stdio: 'inherit' }); } },
       { label: '/help', description: 'Show keyboard shortcuts', icon: '❓', category: 'Info', action: () => setShowHelp(true) },
       { label: '/quit', description: 'Exit cm', icon: '🚪', category: 'Info', action: () => process.exit(0) },
     ];
@@ -1315,7 +1315,8 @@ if (cmd === 'skills') {
         }
         if (input === 'i') {
           execSync('cm status', { stdio: 'inherit' });
-          process.exit(0);
+          setStep('select');
+          return;
         }
         if (input === 'q') {
           process.exit(0);
