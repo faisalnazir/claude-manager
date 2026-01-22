@@ -2,7 +2,7 @@ import os from 'os';
 import path from 'path';
 
 // Version
-export const VERSION = "1.6.0";
+export const VERSION = "1.7.0";
 
 // ASCII Logo
 export const LOGO = `██████╗██╗      █████╗ ██╗   ██╗██████╗ ███████╗
@@ -45,7 +45,6 @@ export const NPM_OUTDATED_TIMEOUT = 5000;
 export const GIT_CLONE_TIMEOUT = 30000;
 export const GIT_SPARSE_TIMEOUT = 10000;
 export const GIT_MOVE_TIMEOUT = 5000;
-export const GIT_CLEANUP_TIMEOUT = 5000;
 
 // Pagination
 export const MCP_PAGE_SIZE = 50;

@@ -16,7 +16,8 @@ export const launchSingleInstance = async (profile, index, dangerMode = false) =
 
   try {
     const profileData = JSON.parse(fs.readFileSync(profilePath, 'utf8'));
-    fs.writeFileSync(tempSettingsPath, JSON.stringify(profileData, null, 2));
+    const { name, group, mcpServers, ...settings } = profileData;
+    fs.writeFileSync(tempSettingsPath, JSON.stringify(settings, null, 2));
 
     const claudeArgs = ['--settings', tempSettingsPath];
     if (dangerMode) {

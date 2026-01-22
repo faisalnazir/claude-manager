@@ -16,7 +16,6 @@ import {
   GIT_CLONE_TIMEOUT,
   GIT_SPARSE_TIMEOUT,
   GIT_MOVE_TIMEOUT,
-  GIT_CLEANUP_TIMEOUT,
   DEFAULT_SETTINGS,
   API_TIMEOUT_MS,
 } from './constants.js';
@@ -339,6 +338,7 @@ export const fetchSkills = async () => {
 
 /** Add skill to Claude from GitHub URL */
 export const addSkillToClaudeJson = (skillName, skillUrl) => {
+  let finalTempDir = null;
   try {
     if (!fs.existsSync(SKILLS_DIR)) {
       fs.mkdirSync(SKILLS_DIR, { recursive: true });
@@ -355,7 +355,7 @@ export const addSkillToClaudeJson = (skillName, skillUrl) => {
 
     const [, owner, repo, , skillSubPath] = match;
     const sanitizedTempDir = sanitizeFilePath(`skill-clone-${Date.now()}`, '/tmp');
-    const finalTempDir = path.join('/tmp', sanitizedTempDir || 'skill-clone');
+    finalTempDir = path.join('/tmp', sanitizedTempDir || 'skill-clone');
 
     // Clone with sparse checkout
     execSync(
@@ -369,12 +369,10 @@ export const addSkillToClaudeJson = (skillName, skillUrl) => {
 
     // Move skill to destination
     const sourcePath = path.join(finalTempDir, skillSubPath);
-    if (fs.existsSync(sourcePath)) {
-      execSync(`mv "${sourcePath}" "${skillPath}"`, { timeout: GIT_MOVE_TIMEOUT, stdio: 'ignore' });
+    if (!fs.existsSync(sourcePath)) {
+      throw new Error('Skill path not found in repository');
     }
-
-    // Cleanup
-    execSync(`rm -rf "${finalTempDir}"`, { timeout: GIT_CLEANUP_TIMEOUT, stdio: 'ignore' });
+    execSync(`mv "${sourcePath}" "${skillPath}"`, { timeout: GIT_MOVE_TIMEOUT, stdio: 'ignore' });
 
     // Invalidate cache
     skillsCache.clear('all-skills');
@@ -383,6 +381,14 @@ export const addSkillToClaudeJson = (skillName, skillUrl) => {
   } catch (e) {
     logError('addSkillToClaudeJson', e);
     return { success: false, message: 'Failed to download skill' };
+  } finally {
+    if (finalTempDir) {
+      try {
+        fs.rmSync(finalTempDir, { recursive: true, force: true });
+      } catch (error) {
+        logError('addSkillToClaudeJson-cleanup', error);
+      }
+    }
   }
 };
 
@@ -482,15 +488,16 @@ export const createDefaultSettings = () => {
 };
 
 /** Build profile data for new profile */
-export const buildProfileData = (name, provider, apiKey, model, group, providers) => {
+export const buildProfileData = (name, provider, apiKey, model, group, providers, baseUrl) => {
   const prov = providers.find(p => p.value === provider);
+  const resolvedUrl = baseUrl?.trim() || prov?.url || '';
   return {
     name,
     group: group || undefined,
     env: {
       ...(apiKey && { ANTHROPIC_AUTH_TOKEN: apiKey }),
       ...(model && { ANTHROPIC_MODEL: model }),
-      ...(prov?.url && { ANTHROPIC_BASE_URL: prov.url }),
+      ...(resolvedUrl && { ANTHROPIC_BASE_URL: resolvedUrl }),
       API_TIMEOUT_MS,
     },
     model: 'opus',
@@ -527,7 +534,17 @@ export const checkForUpdate = async (skipUpdate) => {
       if (npmListResult.stdout.includes('@anthropic-ai/claude-code')) {
         try {
           const npmOutdated = await execAsync('npm outdated -g @anthropic-ai/claude-code --json 2>/dev/null || true', { timeout: NPM_OUTDATED_TIMEOUT });
-          needsUpdate = npmOutdated.stdout.length > 0;
+          const raw = npmOutdated.stdout.trim();
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw);
+              needsUpdate = Object.keys(parsed || {}).length > 0;
+            } catch {
+              needsUpdate = true;
+            }
+          } else {
+            needsUpdate = false;
+          }
         } catch {
           needsUpdate = true;
         }
