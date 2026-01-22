@@ -4,6 +4,7 @@ import SelectInput from 'ink-select-input';
 import TextInput from 'ink-text-input';
 import { spawnSync, execSync } from 'child_process';
 import fs from 'fs';
+import path from 'path';
 import Fuse from 'fuse.js';
 
 import {
@@ -550,13 +551,15 @@ const NewProfileWizard = () => {
   const [step, setStep] = useState('name');
   const [name, setName] = useState('');
   const [provider, setProvider] = useState('');
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  const [baseUrl, setBaseUrl] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
   const [group, setGroup] = useState('');
   const [validationErrors, setValidationErrors] = useState([]);
 
   const handleSave = () => {
-    const profile = buildProfileData(name, provider, apiKey, model, group, PROVIDERS);
+    const profile = buildProfileData(name, provider, apiKey, model, group, PROVIDERS, baseUrl);
 
     const validation = validateProfile(profile);
     if (!validation.valid) {
@@ -574,7 +577,12 @@ const NewProfileWizard = () => {
   const handleProviderSelect = (item) => {
     setProvider(item.value);
     const prov = PROVIDERS.find(p => p.value === item.value);
-    setStep(prov.needsKey ? 'apikey' : 'model');
+    setSelectedProvider(prov || null);
+    if (item.value === 'custom') {
+      setStep('baseUrl');
+    } else {
+      setStep(prov?.needsKey ? 'apikey' : 'model');
+    }
   };
 
   useInput((input, key) => {
@@ -600,6 +608,13 @@ const NewProfileWizard = () => {
         <Box flexDirection="column" marginTop={1}>
           <Text>Provider:</Text>
           <SelectInput items={PROVIDERS} onSelect={handleProviderSelect} />
+        </Box>
+      )}
+
+      {step === 'baseUrl' && (
+        <Box marginTop={1}>
+          <Text>Base URL: </Text>
+          <TextInput value={baseUrl} onChange={setBaseUrl} onSubmit={() => setStep(selectedProvider?.needsKey ? 'apikey' : 'model')} />
         </Box>
       )}
 
@@ -887,7 +902,7 @@ if (cmd === 'skills') {
     useInput((input, key) => {
       if (showCopyInput) {
         if (key.return && copyName.trim()) {
-          execSync(`cm copy "${selectedProfile.label}" "${copyName}"`, { stdio: 'inherit' });
+          spawnSync('cm', ['copy', selectedProfile.label, copyName], { stdio: 'inherit' });
           exit();
         }
         if (key.escape) {
@@ -910,7 +925,7 @@ if (cmd === 'skills') {
           setSelectedProfile(profile);
           setShowCopyInput(true);
         } else if (action === 'delete') {
-          execSync(`cm delete "${profile.label}" --force`, { stdio: 'inherit' });
+          spawnSync('cm', ['delete', profile.label, '--force'], { stdio: 'inherit' });
           exit();
         } else if (action === 'yolo') {
           applyProfile(profile.value);
@@ -1075,9 +1090,12 @@ if (cmd === 'skills') {
     const [step, setStep] = useState('loading');
     const [updateInfo, setUpdateInfo] = useState(null);
     const [filter, setFilter] = useState('');
+    const [filterMode, setFilterMode] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const [showCommandPalette, setShowCommandPalette] = useState(false);
     const [commandInput, setCommandInput] = useState('');
+    const [commandIndex, setCommandIndex] = useState(0);
+    const [selectedIndex, setSelectedIndex] = useState(0);
     const profiles = loadProfiles();
 
     const commands = [
@@ -1132,6 +1150,21 @@ if (cmd === 'skills') {
     }, [commands, commandInput]);
 
     useEffect(() => {
+      if (selectedIndex >= filteredProfiles.length) {
+        setSelectedIndex(Math.max(0, filteredProfiles.length - 1));
+      }
+      if (!filter) {
+        setFilterMode(false);
+      }
+    }, [filteredProfiles.length, filter, selectedIndex]);
+
+    useEffect(() => {
+      if (showCommandPalette) {
+        setCommandIndex(0);
+      }
+    }, [commandInput, showCommandPalette]);
+
+    useEffect(() => {
       setTimeout(() => setStep('select'), 1500);
 
       if (!skipUpdate) {
@@ -1146,10 +1179,18 @@ if (cmd === 'skills') {
           setCommandInput('');
           return;
         }
+        if (key.upArrow) {
+          setCommandIndex(i => Math.max(0, i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setCommandIndex(i => Math.min(filteredCommands.length - 1, i + 1));
+          return;
+        }
         if (key.return) {
           const matchedCommand = commandInput.startsWith('/')
             ? commands.find(c => c.label === commandInput)
-            : filteredCommands[0];
+            : filteredCommands[commandIndex] || filteredCommands[0];
 
           if (matchedCommand) {
             setShowCommandPalette(false);
@@ -1171,14 +1212,61 @@ if (cmd === 'skills') {
         return;
       }
 
+      if (showHelp && (input === 'q' || input === '?' || key.escape || key.return)) {
+        setShowHelp(false);
+        return;
+      }
+
       if (step === 'select') {
+        const reservedInputs = new Set(['u', 'c', '?', '/', 'n', 'e', 'd', 'p', 'y', 'm', 's', 'i', 'q', 'f']);
+
+        if (filterMode) {
+          if (key.escape) {
+            setFilter('');
+            setFilterMode(false);
+            return;
+          }
+          if (key.return) {
+            setFilterMode(false);
+            return;
+          }
+          if (key.backspace || key.delete) {
+            setFilter(f => f.slice(0, -1));
+            return;
+          }
+          if (input && !key.ctrl && !key.meta) {
+            setFilter(f => f + input);
+            return;
+          }
+        }
+
+        if (key.upArrow) {
+          if (filteredProfiles.length === 0) return;
+          setSelectedIndex(i => Math.max(0, i - 1));
+          return;
+        }
+        if (key.downArrow) {
+          if (filteredProfiles.length === 0) return;
+          setSelectedIndex(i => Math.min(filteredProfiles.length - 1, i + 1));
+          return;
+        }
+        if (key.return && filteredProfiles[selectedIndex]) {
+          const profile = filteredProfiles[selectedIndex];
+          applyProfile(profile.value);
+          console.log(`\n\x1b[32m✓\x1b[0m Applied: ${profile.label}\n`);
+          launchClaude(dangerMode);
+          return;
+        }
+
         const num = safeParseInt(input, -1);
         if (num >= 1 && num <= 9 && num <= filteredProfiles.length) {
           const profile = filteredProfiles[num - 1];
           applyProfile(profile.value);
           console.log(`\n\x1b[32m✓\x1b[0m Applied: ${profile.label}\n`);
           launchClaude(dangerMode);
+          return;
         }
+
         if (input === 'u' && updateInfo?.needsUpdate) {
           console.log('\n\x1b[33mUpdating Claude...\x1b[0m\n');
           try {
@@ -1193,7 +1281,9 @@ if (cmd === 'skills') {
             console.log('\x1b[31m✗ Update failed\x1b[0m\n');
             logError('update', error);
           }
+          return;
         }
+
         // Quick action shortcuts
         if (input === 'n') {
           render(<NewProfileWizard />);
@@ -1201,6 +1291,10 @@ if (cmd === 'skills') {
         }
         if (input === 'e') {
           setStep('edit');
+          return;
+        }
+        if (input === 'd') {
+          setStep('delete');
           return;
         }
         if (input === 'p') {
@@ -1231,17 +1325,26 @@ if (cmd === 'skills') {
           setCommandInput('/');
           return;
         }
-        if (input.match(/^[a-zA-Z]$/) && !['u', 'c', '?', '/', 'n', 'e', 'p', 'y', 'm', 's', 'i', 'q'].includes(input)) {
-          setFilter(f => f + input);
+        if (input === '?') {
+          setShowHelp(true);
+          return;
+        }
+        if (input === 'f') {
+          setFilterMode(true);
+          return;
         }
         if (key.backspace || key.delete) {
-          setFilter(f => f.slice(0, -1));
+          setFilter(f => {
+            const next = f.slice(0, -1);
+            if (!next) setFilterMode(false);
+            return next;
+          });
+          return;
         }
         if (key.escape) {
           setFilter('');
-        }
-        if (input === '?') {
-          setShowHelp(true);
+          setFilterMode(false);
+          return;
         }
         if (input === 'c') {
           const editor = process.env.EDITOR || 'nano';
@@ -1249,10 +1352,12 @@ if (cmd === 'skills') {
           console.clear();
           spawnSync(editor, [SETTINGS_PATH], { stdio: 'inherit' });
           console.log('\n\x1b[36mConfig edited. Press Enter to continue...\x1b[0m');
+          return;
         }
-      }
-      if (showHelp && (input === 'q' || input === '?' || key.escape || key.return)) {
-        setShowHelp(false);
+        if (input && !key.ctrl && !key.meta && !reservedInputs.has(input) && !/^\d$/.test(input)) {
+          setFilter(f => f + input);
+          setFilterMode(true);
+        }
       }
     });
 
@@ -1303,10 +1408,17 @@ if (cmd === 'skills') {
     // Get current profile info
     const lastProfile = getLastProfile();
     const currentProfile = profiles.find(p => p.value === lastProfile);
+    const selectedProfile = filteredProfiles[selectedIndex] || null;
     const installedSkills = getInstalledSkills();
     
     // Count MCP servers across all profiles
     const totalMcpServers = profiles.reduce((acc, p) => acc + Object.keys(p.data.mcpServers || {}).length, 0);
+    const listHeight = 9;
+    const startIndex = Math.max(
+      0,
+      Math.min(selectedIndex - Math.floor(listHeight / 2), Math.max(0, filteredProfiles.length - listHeight))
+    );
+    const visibleProfiles = filteredProfiles.slice(startIndex, startIndex + listHeight);
 
     return (
       <Box flexDirection="column" padding={1}>
@@ -1328,69 +1440,81 @@ if (cmd === 'skills') {
 
         {/* Main Content - Two Column Layout */}
         <Box flexDirection="row" marginTop={1}>
-          
           {/* Left Column - Profiles */}
-          <Box flexDirection="column" width="50%">
+          <Box flexDirection="column" width="55%">
             <Box borderStyle="round" borderColor="cyan" flexDirection="column" paddingX={1}>
-              <Text bold color="cyan">📋 PROFILES ({profiles.length})</Text>
-              {filter && <Text color="yellow">🔍 Filter: {filter}</Text>}
+              <Text bold color="cyan">PROFILES ({profiles.length})</Text>
+              <Text dimColor>
+                Filter: <Text color={filter ? "yellow" : "gray"}>{filter || 'type to search'}</Text>
+                {filterMode && <Text color="cyan">▌</Text>}
+                {filter && <Text dimColor>  ({filteredProfiles.length} match{filteredProfiles.length === 1 ? '' : 'es'})</Text>}
+              </Text>
               <Box flexDirection="column" marginTop={1}>
-                {filteredProfiles.slice(0, 7).map((p, i) => {
+                {filteredProfiles.length === 0 && (
+                  <Text color="yellow">No matches. Press Esc to clear.</Text>
+                )}
+                {startIndex > 0 && <Text dimColor>↑ more</Text>}
+                {visibleProfiles.map((p, i) => {
+                  const absoluteIndex = startIndex + i;
+                  const isSelected = absoluteIndex === selectedIndex;
                   const isCurrent = p.value === lastProfile;
+                  const line = `${isSelected ? '›' : ' '} ${absoluteIndex + 1}. ${isCurrent ? '● ' : '  '}${p.label}`;
                   return (
-                    <Text key={p.value}>
-                      <Text color="yellow">{i + 1}</Text>
-                      <Text color={isCurrent ? "green" : "white"}>{isCurrent ? " ● " : "   "}</Text>
-                      <Text color={isCurrent ? "green" : "white"}>{p.label}</Text>
-                      {p.group && <Text dimColor> [{p.group}]</Text>}
+                    <Text
+                      key={p.value}
+                      backgroundColor={isSelected ? "cyan" : undefined}
+                      color={isSelected ? "black" : isCurrent ? "green" : "white"}
+                    >
+                      {line}
                     </Text>
                   );
                 })}
-                {filteredProfiles.length > 7 && (
-                  <Text dimColor>  +{filteredProfiles.length - 7} more...</Text>
-                )}
+                {startIndex + visibleProfiles.length < filteredProfiles.length && <Text dimColor>↓ more</Text>}
               </Box>
             </Box>
-
-            {/* Current Profile Status */}
-            {currentProfile && (
-              <Box borderStyle="round" borderColor="green" flexDirection="column" paddingX={1} marginTop={1}>
-                <Text bold color="green">✓ ACTIVE PROFILE</Text>
-                <Text><Text color="cyan">{currentProfile.label}</Text></Text>
-                <Text dimColor>Model: {currentProfile.data.model || 'default'}</Text>
-                {Object.keys(currentProfile.data.mcpServers || {}).length > 0 && (
-                  <Text dimColor>MCP: {Object.keys(currentProfile.data.mcpServers).join(', ')}</Text>
-                )}
-              </Box>
-            )}
           </Box>
 
-          {/* Right Column - Features */}
-          <Box flexDirection="column" width="50%" marginLeft={1}>
-            
-            {/* Quick Actions */}
-            <Box borderStyle="round" borderColor="magenta" flexDirection="column" paddingX={1}>
-              <Text bold color="magenta">⚡ QUICK ACTIONS</Text>
+          {/* Right Column - Details & Actions */}
+          <Box flexDirection="column" width="45%" marginLeft={1}>
+            <Box borderStyle="round" borderColor="green" flexDirection="column" paddingX={1}>
+              <Text bold color="green">SELECTED PROFILE</Text>
+              {selectedProfile ? (
+                <Box flexDirection="column" marginTop={1}>
+                  <Text color="cyan">{selectedProfile.label}</Text>
+                  <Text dimColor>Model: {selectedProfile.data.env?.ANTHROPIC_MODEL || selectedProfile.data.model || 'default'}</Text>
+                  <Text dimColor>Provider: {selectedProfile.data.env?.ANTHROPIC_BASE_URL || 'Anthropic Direct'}</Text>
+                  <Text dimColor>MCP: {Object.keys(selectedProfile.data.mcpServers || {}).length}</Text>
+                  {selectedProfile.value === lastProfile && <Text color="green">Active now</Text>}
+                </Box>
+              ) : (
+                <Text dimColor>No profile selected</Text>
+              )}
+            </Box>
+
+            <Box borderStyle="round" borderColor="magenta" flexDirection="column" paddingX={1} marginTop={1}>
+              <Text bold color="magenta">QUICK ACTIONS</Text>
               <Box flexDirection="column" marginTop={1}>
                 <Text><Text color="yellow">n</Text> <Text color="cyan">New Profile</Text></Text>
                 <Text><Text color="yellow">e</Text> <Text color="cyan">Edit Profile</Text></Text>
-                <Text><Text color="yellow">p</Text> <Text color="cyan">Parallel Launch</Text> <Text dimColor>🚀</Text></Text>
-                <Text><Text color="yellow">y</Text> <Text color="cyan">YOLO Mode</Text> <Text dimColor>⚡</Text></Text>
+                <Text><Text color="yellow">d</Text> <Text color="cyan">Delete Profile</Text></Text>
+                <Text><Text color="yellow">p</Text> <Text color="cyan">Parallel Launch</Text></Text>
+                <Text><Text color="yellow">y</Text> <Text color="cyan">YOLO Mode</Text></Text>
+                {updateInfo?.needsUpdate && (
+                  <Text><Text color="yellow">u</Text> <Text color="cyan">Update Claude</Text></Text>
+                )}
               </Box>
             </Box>
 
-            {/* Extensions */}
             <Box borderStyle="round" borderColor="yellow" flexDirection="column" paddingX={1} marginTop={1}>
-              <Text bold color="yellow">🔌 EXTENSIONS</Text>
+              <Text bold color="yellow">EXTENSIONS</Text>
               <Box flexDirection="column" marginTop={1}>
                 <Text><Text color="yellow">m</Text> <Text color="cyan">MCP Servers</Text> <Text dimColor>({totalMcpServers} installed)</Text></Text>
                 <Text><Text color="yellow">s</Text> <Text color="cyan">Skills</Text> <Text dimColor>({installedSkills.length} installed)</Text></Text>
               </Box>
             </Box>
 
-            {/* Info */}
             <Box borderStyle="round" borderColor="gray" flexDirection="column" paddingX={1} marginTop={1}>
-              <Text bold color="gray">📊 INFO</Text>
+              <Text bold color="gray">INFO</Text>
               <Box flexDirection="column" marginTop={1}>
                 <Text><Text color="yellow">i</Text> <Text dimColor>Status</Text></Text>
                 <Text><Text color="yellow">c</Text> <Text dimColor>Config</Text></Text>
@@ -1405,13 +1529,14 @@ if (cmd === 'skills') {
         {/* Footer - Keyboard hints */}
         <Box flexDirection="row" justifyContent="space-between" marginTop={1}>
           <Text dimColor>
-            <Text color="yellow">1-9</Text> select • 
             <Text color="yellow">↑↓</Text> navigate • 
             <Text color="yellow">Enter</Text> launch • 
-            <Text color="yellow">a-z</Text> filter • 
+            <Text color="yellow">1-9</Text> quick launch • 
+            <Text color="yellow">f</Text> filter • 
             <Text color="yellow">/</Text> commands
           </Text>
           <Text dimColor>
+            <Text color="yellow">Esc</Text> clear • 
             <Text color="yellow">q</Text> quit
           </Text>
         </Box>
@@ -1427,22 +1552,34 @@ if (cmd === 'skills') {
             </Box>
             {(() => {
               const categories = [...new Set(filteredCommands.map(c => c.category))];
+              if (filteredCommands.length === 0) {
+                return <Text dimColor marginTop={1}>No commands found</Text>;
+              }
+              let flatIndex = 0;
               return categories.map(cat => (
                 <Box key={cat} flexDirection="column" marginTop={1}>
                   <Text bold color="yellow">{cat}</Text>
-                  {filteredCommands.filter(c => c.category === cat).map(cmd => (
-                    <Text key={cmd.label}>
-                      <Text>{cmd.icon || '•'} </Text>
-                      <Text color="cyan">{cmd.label}</Text>
-                      <Text dimColor> - </Text>
-                      <Text color="gray">{cmd.description}</Text>
-                    </Text>
-                  ))}
+                  {filteredCommands.filter(c => c.category === cat).map(cmd => {
+                    const isSelected = flatIndex === commandIndex;
+                    flatIndex += 1;
+                    return (
+                      <Text
+                        key={cmd.label}
+                        backgroundColor={isSelected ? "magenta" : undefined}
+                        color={isSelected ? "black" : "white"}
+                      >
+                        <Text>{cmd.icon || '•'} </Text>
+                        <Text color={isSelected ? "black" : "cyan"}>{cmd.label}</Text>
+                        <Text dimColor> - </Text>
+                        <Text color={isSelected ? "black" : "gray"}>{cmd.description}</Text>
+                      </Text>
+                    );
+                  })}
                 </Box>
               ));
             })()}
             <Text dimColor marginTop={1}>━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━</Text>
-            <Text dimColor>Enter to execute • Esc to close • Type to filter</Text>
+            <Text dimColor>Enter to execute • ↑↓ to navigate • Esc to close</Text>
           </Box>
         )}
 
@@ -1453,21 +1590,24 @@ if (cmd === 'skills') {
             <Box flexDirection="row">
               <Box flexDirection="column" width="50%">
                 <Text bold color="magenta">Navigation</Text>
-                <Text>  <Text color="yellow">1-9</Text>     Quick select profile</Text>
+                <Text>  <Text color="yellow">1-9</Text>     Quick launch profile</Text>
                 <Text>  <Text color="yellow">↑/↓</Text>     Navigate list</Text>
-                <Text>  <Text color="yellow">Enter</Text>   Select & launch</Text>
+                <Text>  <Text color="yellow">Enter</Text>   Launch selected</Text>
                 <Text bold color="magenta" marginTop={1}>Search</Text>
-                <Text>  <Text color="yellow">a-z</Text>     Fuzzy filter</Text>
+                <Text>  <Text color="yellow">f</Text>       Focus filter</Text>
+                <Text>  <Text color="yellow">Type</Text>    Filter profiles</Text>
                 <Text>  <Text color="yellow">Esc</Text>     Clear filter</Text>
               </Box>
               <Box flexDirection="column" width="50%">
                 <Text bold color="magenta">Actions</Text>
                 <Text>  <Text color="yellow">n</Text>       New profile</Text>
                 <Text>  <Text color="yellow">e</Text>       Edit profile</Text>
+                <Text>  <Text color="yellow">d</Text>       Delete profile</Text>
                 <Text>  <Text color="yellow">p</Text>       Parallel launch</Text>
                 <Text>  <Text color="yellow">y</Text>       YOLO mode</Text>
                 <Text>  <Text color="yellow">m</Text>       MCP servers</Text>
                 <Text>  <Text color="yellow">s</Text>       Skills</Text>
+                <Text>  <Text color="yellow">/</Text>       Command palette</Text>
               </Box>
             </Box>
             <Text dimColor marginTop={1}>Press ? or Esc to close</Text>
